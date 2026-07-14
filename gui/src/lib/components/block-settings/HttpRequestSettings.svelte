@@ -85,7 +85,7 @@
 		if (s.body && s.body_type !== 'None') {
 			parts.push(`-d '${s.body.replace(/'/g, "'\\''")}'`);
 		}
-		if (!s.follow_redirects) parts.push('-L');
+		if (s.follow_redirects && s.auto_redirect) parts.push('-L');
 		parts.push(`'${s.url}'`);
 		return parts.join(' \\\n  ');
 	}

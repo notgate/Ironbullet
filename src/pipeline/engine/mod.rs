@@ -9,6 +9,9 @@ mod jwt;
 mod logging;
 mod nudata;
 pub mod parsers;
+
+#[cfg(test)]
+mod http_tests;
 mod protocol;
 
 use serde::{Deserialize, Serialize};
@@ -38,14 +41,14 @@ impl std::fmt::Debug for RustlsClientSlot {
 }
 
 // ── WreqTLS client slot — Unix only (BoringSSL cross-compile for Windows unsupported) ──
-#[cfg(any(unix, target_os = "windows"))]
+#[cfg(feature = "wreq-tls")]
 pub struct WreqClientSlot {
     pub client: wreq::Client,
     pub emulation: String,
     pub proxy: Option<String>,
 }
 
-#[cfg(any(unix, target_os = "windows"))]
+#[cfg(feature = "wreq-tls")]
 impl std::fmt::Debug for WreqClientSlot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "WreqClientSlot({})", self.emulation)
@@ -124,7 +127,7 @@ pub struct ExecutionContext {
     #[serde(skip)]
     pub rustls_client: Option<RustlsClientSlot>,
     /// Reusable wreq client for WreqTLS requests — Unix only (BoringSSL).
-    #[cfg(any(unix, target_os = "windows"))]
+    #[cfg(feature = "wreq-tls")]
     #[serde(skip)]
     pub wreq_client: Option<WreqClientSlot>,
 }
@@ -200,7 +203,7 @@ impl ExecutionContext {
             chrome_executable_path: None,
             chrome_child: None,
             rustls_client: None,
-            #[cfg(any(unix, target_os = "windows"))]
+            #[cfg(feature = "wreq-tls")]
             wreq_client: None,
         }
     }
@@ -392,10 +395,9 @@ impl ExecutionContext {
                 self.execute_conversion_function(settings)
             }
             BlockSettings::CookieContainer(settings) => self.execute_cookie_container(settings),
-            BlockSettings::Script(_settings) => {
-                // Script execution is not yet supported in debug mode
-                Ok(())
-            }
+            BlockSettings::Script(_) => Err(crate::error::AppError::Pipeline(
+                "Script blocks are not supported by the native pipeline engine.".into(),
+            )),
             // Browser automation
             BlockSettings::BrowserOpen(settings) => self.execute_browser_open(settings).await,
             BlockSettings::NavigateTo(settings) => {

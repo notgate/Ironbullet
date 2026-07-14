@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 use super::{AppState, IpcResponse};
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const GITHUB_REPO: &str = "ZeraTS/ironbullet";
+const GITHUB_REPO: &str = "notgate/Ironbullet";
 
 /// Return current app version info (no network call)
 pub fn get_app_info() -> IpcResponse {

@@ -205,7 +205,7 @@ ss://aes-128-gcm:pass@ss.com:8388
 
 Found a bug in RC1? Please report:
 
-**GitHub:** https://github.com/ZeraTS/ironbullet/issues
+**GitHub:** https://github.com/notgate/Ironbullet/issues
 
 **Include:**
 - Version: 0.5.3-rc1

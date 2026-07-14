@@ -2,6 +2,14 @@ use uuid::Uuid;
 
 use super::*; // includes TlsClient via block::settings_http::* and RustlsClientSlot
 
+fn has_header(headers: &[Vec<String>], name: &str) -> bool {
+    headers.iter().any(|header| {
+        header
+            .first()
+            .is_some_and(|key| key.eq_ignore_ascii_case(name))
+    })
+}
+
 impl ExecutionContext {
     pub(super) async fn execute_http_request(
         &mut self,
@@ -12,14 +20,53 @@ impl ExecutionContext {
             tokio::sync::oneshot::Sender<SidecarResponse>,
         )>,
     ) -> crate::error::Result<()> {
+        if matches!(settings.body_type, BodyType::Multipart) {
+            return Err(crate::error::AppError::Pipeline(
+                "Multipart HTTP bodies require a field/boundary schema and are not supported by the native pipeline engine.".into(),
+            ));
+        }
+
         // ── Interpolate common request fields ─────────────────────────────────
         let url = self.variables.interpolate(&settings.url);
-        let body = self.variables.interpolate(&settings.body);
+        let body = if matches!(settings.body_type, BodyType::None) {
+            String::new()
+        } else {
+            self.variables.interpolate(&settings.body)
+        };
         let mut headers: Vec<Vec<String>> = settings
             .headers
             .iter()
             .map(|(k, v)| vec![self.variables.interpolate(k), self.variables.interpolate(v)])
             .collect();
+
+        // Apply configured metadata only when the caller did not set an explicit
+        // header. That keeps imported/manual headers authoritative.
+        if !body.is_empty()
+            && !settings.content_type.trim().is_empty()
+            && !has_header(&headers, "Content-Type")
+        {
+            headers.push(vec![
+                "Content-Type".into(),
+                self.variables.interpolate(&settings.content_type),
+            ]);
+        }
+        if let Some((username, password)) = &settings.basic_auth {
+            if !has_header(&headers, "Authorization") {
+                use base64::Engine as _;
+                let credentials = format!(
+                    "{}:{}",
+                    self.variables.interpolate(username),
+                    self.variables.interpolate(password)
+                );
+                headers.push(vec![
+                    "Authorization".into(),
+                    format!(
+                        "Basic {}",
+                        base64::engine::general_purpose::STANDARD.encode(credentials)
+                    ),
+                ]);
+            }
+        }
 
         // Inject SPOOF_HEADERS set by a preceding HeaderSpoof block.
         // SPOOF_HEADERS is consumed (cleared) after reading so it only applies
@@ -95,7 +142,7 @@ impl ExecutionContext {
             browser: effective_browser,
             ja3: effective_ja3,
             http2fp: effective_http2fp,
-            follow_redirects: Some(settings.follow_redirects),
+            follow_redirects: Some(settings.follow_redirects && settings.auto_redirect),
             max_redirects: Some(settings.max_redirects as i64),
             ssl_verify: if settings.ssl_verify {
                 None
@@ -142,7 +189,7 @@ impl ExecutionContext {
                 });
                 resp
             }
-            #[cfg(any(unix, target_os = "windows"))]
+            #[cfg(feature = "wreq-tls")]
             TlsClient::WreqTLS => {
                 let emu = if settings.wreq_emulation.is_empty() {
                     "Chrome134"
@@ -172,10 +219,10 @@ impl ExecutionContext {
                 });
                 resp
             }
-            #[cfg(not(any(unix, target_os = "windows")))]
+            #[cfg(not(feature = "wreq-tls"))]
             TlsClient::WreqTLS => SidecarResponse {
                 id: sidecar_req.id.clone(),
-                error: Some("WreqTLS is not available on Windows builds.".into()),
+                error: Some("WreqTLS is not enabled in this build.".into()),
                 ..Default::default()
             },
             TlsClient::AzureTLS => {

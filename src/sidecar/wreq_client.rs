@@ -1,6 +1,6 @@
-// WreqTLS is Unix-only — BoringSSL cross-compile for Windows requires llvm-mingw.
+// WreqTLS is compiled only when the `wreq-tls` Cargo feature is enabled.
 
-#[cfg(any(unix, target_os = "windows"))]
+#[cfg(feature = "wreq-tls")]
 mod inner {
     use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
     use std::time::Instant;
@@ -250,5 +250,5 @@ mod inner {
     }
 }
 
-#[cfg(any(unix, target_os = "windows"))]
+#[cfg(feature = "wreq-tls")]
 pub(crate) use inner::execute_wreq_request;

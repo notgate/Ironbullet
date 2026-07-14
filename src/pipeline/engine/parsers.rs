@@ -9,14 +9,27 @@ impl ExecutionContext {
         let left = self.variables.interpolate(&settings.left);
         let right = self.variables.interpolate(&settings.right);
 
+        // Empty delimiters make a recursive parser non-advancing: `find("")`
+        // always succeeds at the current cursor. Reject both modes rather than
+        // permitting an accidental infinite loop or ambiguous extraction.
+        if left.is_empty() || right.is_empty() {
+            return Err(crate::error::AppError::Pipeline(
+                "Parse LR requires non-empty left and right delimiters".into(),
+            ));
+        }
+
         if settings.recursive {
             let mut results = Vec::new();
             let mut search_from = 0;
-            while let Some(start) = source[search_from..].find(&left) {
-                let abs_start = search_from + start + left.len();
-                if let Some(end) = source[abs_start..].find(&right) {
-                    results.push(source[abs_start..abs_start + end].to_string());
-                    search_from = abs_start + end + right.len();
+            while let Some((_, left_end)) =
+                find_literal(&source[search_from..], &left, settings.case_insensitive)
+            {
+                let abs_start = search_from + left_end;
+                if let Some((right_start, right_end)) =
+                    find_literal(&source[abs_start..], &right, settings.case_insensitive)
+                {
+                    results.push(source[abs_start..abs_start + right_start].to_string());
+                    search_from = abs_start + right_end;
                 } else {
                     break;
                 }
@@ -25,10 +38,13 @@ impl ExecutionContext {
             self.variables
                 .set_user(&settings.output_var, value, settings.capture);
         } else {
-            let value = if let Some(start) = source.find(&left) {
-                let after = start + left.len();
-                if let Some(end) = source[after..].find(&right) {
-                    source[after..after + end].to_string()
+            let value = if let Some((_, left_end)) =
+                find_literal(&source, &left, settings.case_insensitive)
+            {
+                if let Some((right_start, _)) =
+                    find_literal(&source[left_end..], &right, settings.case_insensitive)
+                {
+                    source[left_end..left_end + right_start].to_string()
                 } else {
                     String::new()
                 }
@@ -48,14 +64,13 @@ impl ExecutionContext {
     ) -> crate::error::Result<()> {
         let source = self.variables.resolve_input(&settings.input_var);
         let pattern = self.variables.interpolate(&settings.pattern);
-        let re = regex::Regex::new(&pattern)?;
+        let re = regex::RegexBuilder::new(&pattern)
+            .multi_line(settings.multi_line)
+            .build()?;
 
         if let Some(caps) = re.captures(&source) {
-            let mut output = settings.output_format.clone();
-            for i in 0..caps.len() {
-                let group_val = caps.get(i).map(|m| m.as_str()).unwrap_or("");
-                output = output.replace(&format!("${}", i), group_val);
-            }
+            let mut output = String::new();
+            caps.expand(&settings.output_format, &mut output);
             self.variables
                 .set_user(&settings.output_var, output, settings.capture);
         }
@@ -117,24 +132,28 @@ impl ExecutionContext {
         })?;
 
         let elements: Vec<_> = document.select(&selector).collect();
-        let value = if elements.is_empty() {
-            String::new()
-        } else {
-            let idx = settings.index as usize;
-            if idx < elements.len() {
-                let el = &elements[idx];
-                if attribute.is_empty() || attribute == "text" || attribute == "innerText" {
-                    el.text().collect::<Vec<_>>().join("")
-                } else if attribute == "innerHTML" || attribute == "html" {
-                    el.inner_html()
-                } else if attribute == "outerHTML" {
-                    el.html()
-                } else {
-                    el.value().attr(&attribute).unwrap_or("").to_string()
-                }
+        let extract = |el: &scraper::ElementRef<'_>| {
+            if attribute.is_empty() || attribute == "text" || attribute == "innerText" {
+                el.text().collect::<Vec<_>>().join("")
+            } else if attribute == "innerHTML" || attribute == "html" {
+                el.inner_html()
+            } else if attribute == "outerHTML" {
+                el.html()
             } else {
-                String::new()
+                el.value().attr(&attribute).unwrap_or("").to_string()
             }
+        };
+        let value = match settings.index {
+            -1 => elements
+                .iter()
+                .map(|element| extract(element).trim().to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            index if index >= 0 => elements
+                .get(index as usize)
+                .map(extract)
+                .unwrap_or_default(),
+            _ => String::new(),
         };
 
         self.variables.set_user(
@@ -395,6 +414,24 @@ impl ExecutionContext {
     }
 }
 
+/// Find a literal delimiter and return its byte-range in `source`.
+/// Regex escaping keeps case-insensitive parsing literal rather than allowing
+/// user delimiter text to alter parser semantics.
+fn find_literal(source: &str, needle: &str, case_insensitive: bool) -> Option<(usize, usize)> {
+    if case_insensitive {
+        regex::RegexBuilder::new(&regex::escape(needle))
+            .case_insensitive(true)
+            .build()
+            .ok()?
+            .find(source)
+            .map(|matched| (matched.start(), matched.end()))
+    } else {
+        source
+            .find(needle)
+            .map(|start| (start, start + needle.len()))
+    }
+}
+
 // ── JSONPath-lite helper functions ────────────────────────────────────────────
 // Supports:
 //   • Root selector `$`:        `$.user.name`            → same as `user.name`
@@ -423,7 +460,7 @@ pub fn evaluate_json_path(root: &serde_json::Value, path: &str) -> String {
         return json_value_to_string(root);
     } else if let Some(rest) = path.strip_prefix("$.") {
         rest
-    } else if let Some(rest) = path.strip_prefix("$[") {
+    } else if let Some(_rest) = path.strip_prefix("$[") {
         // e.g. `$[0]` or `$[*]` — re-attach the `[`
         // We need to keep the leading bracket so the tokeniser handles it
         &path[1..] // strip just the `$`
@@ -552,7 +589,7 @@ fn parse_filter_expr(expr: &str) -> Option<FilterExpr> {
         (">", FilterOp::Gt),
         ("<", FilterOp::Lt),
     ];
-    for (sym, op) in ops {
+    for (sym, _op) in ops {
         if let Some(pos) = rest.find(sym) {
             let field = rest[..pos].trim().to_string();
             let raw_rhs = rest[pos + sym.len()..].trim();
@@ -830,4 +867,105 @@ fn test_filter_existence_check() {
     let r = evaluate_json_path(&v, "[?(@.optional)].name");
     println!("existence filter: {:?}", r);
     assert_eq!(r, "Alice");
+}
+
+#[test]
+fn parse_lr_honors_case_insensitive_setting() {
+    use crate::pipeline::block::ParseLRSettings;
+
+    let mut ctx = ExecutionContext::new("parser-test".into());
+    ctx.variables
+        .set_data("SOURCE", "prefix <Token>value</TOKEN> suffix".into());
+    ctx.execute_parse_lr(&ParseLRSettings {
+        input_var: "data.SOURCE".into(),
+        left: "<token>".into(),
+        right: "</token>".into(),
+        output_var: "RESULT".into(),
+        capture: false,
+        recursive: false,
+        case_insensitive: true,
+    })
+    .unwrap();
+
+    assert_eq!(ctx.variables.get("RESULT").as_deref(), Some("value"));
+}
+
+#[test]
+fn parse_regex_honors_multi_line_setting() {
+    use crate::pipeline::block::ParseRegexSettings;
+
+    let mut ctx = ExecutionContext::new("parser-test".into());
+    ctx.variables
+        .set_data("SOURCE", "first\nsecond\nthird".into());
+    ctx.execute_parse_regex(&ParseRegexSettings {
+        input_var: "data.SOURCE".into(),
+        pattern: "^second$".into(),
+        output_format: "$0".into(),
+        output_var: "RESULT".into(),
+        capture: false,
+        multi_line: true,
+    })
+    .unwrap();
+
+    assert_eq!(ctx.variables.get("RESULT").as_deref(), Some("second"));
+}
+
+#[test]
+fn parse_css_negative_one_collects_all_matches() {
+    use crate::pipeline::block::ParseCSSSettings;
+
+    let mut ctx = ExecutionContext::new("parser-test".into());
+    ctx.variables
+        .set_data("SOURCE", "<main><p>one</p><p>two</p></main>".into());
+    ctx.execute_parse_css(&ParseCSSSettings {
+        input_var: "data.SOURCE".into(),
+        selector: "p".into(),
+        attribute: "text".into(),
+        output_var: "RESULT".into(),
+        capture: false,
+        index: -1,
+    })
+    .unwrap();
+
+    assert_eq!(ctx.variables.get("RESULT").as_deref(), Some("one, two"));
+}
+
+#[test]
+fn parse_lr_rejects_empty_delimiters_without_looping() {
+    use crate::pipeline::block::ParseLRSettings;
+
+    let mut ctx = ExecutionContext::new("parser-test".into());
+    ctx.variables.set_data("SOURCE", "any source".into());
+    let error = ctx
+        .execute_parse_lr(&ParseLRSettings {
+            input_var: "data.SOURCE".into(),
+            left: String::new(),
+            right: "]".into(),
+            output_var: "RESULT".into(),
+            capture: false,
+            recursive: true,
+            case_insensitive: false,
+        })
+        .unwrap_err();
+
+    assert!(error.to_string().contains("non-empty"));
+}
+
+#[test]
+fn parse_regex_expands_two_digit_capture_references() {
+    use crate::pipeline::block::ParseRegexSettings;
+
+    let mut ctx = ExecutionContext::new("parser-test".into());
+    ctx.variables.set_data("SOURCE", "abcdefghij".into());
+    ctx.execute_parse_regex(&ParseRegexSettings {
+        input_var: "data.SOURCE".into(),
+        pattern: "(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)".into(),
+        output_format: "$10:$1".into(),
+        output_var: "RESULT".into(),
+        capture: false,
+        multi_line: false,
+    })
+    .unwrap();
+
+    assert_eq!(ctx.variables.get("RESULT").as_deref(), Some("j:a"));
 }

@@ -4,15 +4,31 @@ version = "0.6.1"
 edition = "2021"
 description = "Pipelined request automation & script builder"
 
+[features]
+default = ["gui", "wreq-tls"]
+# The native Wry/Tao shell is deliberately optional so the pipeline library can
+# be exercised in headless CI and on systems without GTK/WebKit development
+# packages: `cargo test --lib --no-default-features`.
+gui = [
+    "dep:include_dir",
+    "dep:raw-window-handle",
+    "dep:rfd",
+    "dep:tao",
+    "dep:wry",
+    "dep:windows-sys",
+]
+# BoringSSL-backed browser emulation is optional for headless core tests.
+wreq-tls = ["dep:wreq", "dep:wreq-util"]
+
 [dependencies]
-tao = "0.34.5"
-wry = "0.54.1"
-rfd = "0.17.2"
+tao = { version = "0.34.5", optional = true }
+wry = { version = "0.54.1", optional = true }
+rfd = { version = "0.17.2", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util"] }
 thiserror = "2"
-include_dir = "0.7"
+include_dir = { version = "0.7", optional = true }
 uuid = { version = "1", features = ["v4", "serde"] }
 dashmap = "6"
 chrono = { version = "0.4", features = ["serde"] }
@@ -25,7 +41,7 @@ sha1 = "0.10"
 sha2 = "0.10"
 md-5 = "0.10"
 hmac = "0.12"
-raw-window-handle = "0.6"
+raw-window-handle = { version = "0.6", optional = true }
 reqwest = { version = "0.12", features = ["cookies", "gzip", "deflate", "brotli", "json", "stream", "rustls-tls", "socks"], default-features = false }
 
 
@@ -55,7 +71,7 @@ num-bigint = "0.4"
 num-traits = "0.2"
 resvg = "0.43"
 
-wreq-util = "3.0.0-rc.10"
+wreq-util = { version = "3.0.0-rc.10", optional = true }
 
 # Shadowsocks: embedded local SOCKS5 proxy for ss:// proxy entries.
 # Spins up a per-server local listener so ss:// lines work without any external tools.
@@ -65,11 +81,14 @@ arboard = "3.6.1"
 
 [target.'cfg(not(windows))'.dependencies]
 ssh2 = { version = "0.9", features = ["vendored-openssl"] }
-wreq = { version = "6.0.0-rc.28", features = ["cookies", "gzip", "deflate", "brotli", "socks", "prefix-symbols"] }
+wreq = { version = "6.0.0-rc.28", optional = true, features = ["cookies", "gzip", "deflate", "brotli", "socks", "prefix-symbols"] }
 
 [target.'cfg(windows)'.dependencies]
-wreq = { version = "6.0.0-rc.28", features = ["cookies", "gzip", "deflate", "brotli", "socks"] }
-windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_System_Console"] }
+wreq = { version = "6.0.0-rc.28", optional = true, features = ["cookies", "gzip", "deflate", "brotli", "socks"] }
+windows-sys = { version = "0.59", optional = true, features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_System_Console"] }
+
+[build-dependencies]
+winres = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
@@ -77,3 +96,4 @@ tempfile = "3"
 [[bin]]
 name = "ironbullet"
 path = "src/main.rs"
+required-features = ["gui"]

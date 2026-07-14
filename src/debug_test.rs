@@ -456,7 +456,7 @@ mod tests {
         println!("\n=== VARIABLE DUMP AFTER HTTP + KEYCHECK ===");
         let snap = ctx.variables.snapshot();
         let mut kv: Vec<_> = snap.iter().collect();
-        kv.sort_by_key(|(k, _)| k.clone());
+        kv.sort_by_key(|(k, _)| *k);
         for (k, v) in &kv {
             let display = if v.len() > 80 {
                 format!("{}...", &v[..80])

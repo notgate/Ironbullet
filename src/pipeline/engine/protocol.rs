@@ -481,11 +481,8 @@ impl ExecutionContext {
         _block: &Block,
         settings: &SshRequestSettings,
     ) -> crate::error::Result<()> {
-        self.variables.set_user(
-            &settings.output_var,
-            String::new(),
-            settings.capture,
-        );
+        self.variables
+            .set_user(&settings.output_var, String::new(), settings.capture);
 
         Err(crate::error::AppError::Pipeline(
             "SSH Request is currently supported on Linux builds only; Windows release builds exclude libssh2/OpenSSL to keep packaging stable.".into(),

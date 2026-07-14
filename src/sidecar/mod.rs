@@ -2,6 +2,7 @@ pub mod native;
 pub mod protocol;
 pub mod session;
 pub mod shadowsocks_pool;
+#[cfg(feature = "wreq-tls")]
 pub mod wreq_client;
 
 use dashmap::DashMap;
