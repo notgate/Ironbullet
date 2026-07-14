@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 136 136" role="img" aria-labelledby="title desc">
+  <title id="title">Ironbullet</title>
+  <desc id="desc">An angular interlocking I and B monogram shaped from two forward bullet paths.</desc>
+  <rect x="4" y="4" width="128" height="128" rx="26" fill="#0b0b0d"/>
+  <path fill="#f4f4f5" fill-rule="evenodd" d="M28 23h46l35 28-21 17 21 18-35 27H28V23Zm20 19v18h20l14-9-14-9H48Zm0 35v19h20l14-10-14-9H48Z"/>
+</svg>

@@ -3,7 +3,6 @@
 	import { send } from '$lib/ipc';
 	import { createNewTab } from '$lib/state/tabs';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import Workflow from '@lucide/svelte/icons/workflow';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -123,7 +122,7 @@
 	<Dialog.Content class="bg-surface border-border max-w-[480px] p-0 gap-0 overflow-hidden flex flex-col" showCloseButton={false} interactOutsideBehavior={canClose ? 'close' : 'ignore'} onEscapeKeydown={(e) => { if (canClose) dismiss(); else e.preventDefault(); }}>
 		<!-- Header -->
 		<div class="flex items-center gap-2 px-4 py-3 border-b border-border-dark panel-raised">
-			<Workflow size={16} class="text-primary" />
+			<img src="/ironbullet-logo.png" alt="" aria-hidden="true" draggable="false" class="h-4 w-4 rounded-[4px]" />
 			<span class="text-sm font-semibold text-foreground tracking-tight">Ironbullet</span>
 			<span class="text-[10px] text-muted-foreground/60 font-mono ml-1">v{app.updateCurrentVersion}</span>
 			{#if canClose}

@@ -1,4 +1,5 @@
 target/
+.tmp/
 node_modules/
 gui/build/
 gui/.svelte-kit/

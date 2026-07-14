@@ -381,39 +381,22 @@ fn run_gui() {
     let proxy = event_loop.create_proxy();
 
     let mut wb = WindowBuilder::new()
-        .with_title("IronBullet 0.2.3")
+        .with_title(format!("Ironbullet {}", env!("CARGO_PKG_VERSION")))
         .with_inner_size(tao::dpi::LogicalSize::new(
             cfg.window_width,
             cfg.window_height,
         ))
         .with_decorations(false);
 
-    // Load app icon from embedded PNG (file may not exist in all builds)
+    // The canonical mark is embedded so release archives do not depend on a
+    // loose runtime file for native taskbar/window identity.
     {
-        // Use a const fallback: embed if present at compile time, otherwise skip at runtime
-        #[cfg(feature = "embed_icon")]
-        let icon_bytes: Option<&[u8]> = Some(include_bytes!("../data/IMGS/notextlogo.png"));
-        #[cfg(not(feature = "embed_icon"))]
-        let icon_bytes: Option<&[u8]> = None;
-
-        // Runtime fallback: try loading from filesystem next to the exe
-        let runtime_icon: Option<Vec<u8>> = if icon_bytes.is_none() {
-            std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|d| d.join("data/IMGS/notextlogo.png")))
-                .and_then(|p| std::fs::read(p).ok())
-        } else {
-            None
-        };
-
-        let bytes_ref: Option<&[u8]> = icon_bytes.or_else(|| runtime_icon.as_deref());
-        if let Some(bytes) = bytes_ref {
-            if let Ok(img) = image::load_from_memory(bytes) {
-                let rgba = img.to_rgba8();
-                let (w, h) = rgba.dimensions();
-                if let Ok(icon) = Icon::from_rgba(rgba.into_raw(), w, h) {
-                    wb = wb.with_window_icon(Some(icon));
-                }
+        let bytes = include_bytes!("../assets/brand/ironbullet-icon.png");
+        if let Ok(img) = image::load_from_memory(bytes) {
+            let rgba = img.to_rgba8();
+            let (w, h) = rgba.dimensions();
+            if let Ok(icon) = Icon::from_rgba(rgba.into_raw(), w, h) {
+                wb = wb.with_window_icon(Some(icon));
             }
         }
     }

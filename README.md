@@ -1,23 +1,29 @@
 <div align="center">
 
-<img src="https://cdn.discordapp.com/attachments/1364745764391354422/1481391455711789099/1773201844466.png?ex=69b324cd&is=69b1d34d&hm=6d2541afc49a72dcf63274b36f9d6ef91b40f9541468bdb30e47eb367e53f7a3&" alt="IronBullet Interface" width="860" />
+<img src="docs/media/ironbullet-logo.svg" width="100" alt="Ironbullet logo" />
 
-<br/>
+<h1>Ironbullet</h1>
 
-# IronBullet
+**VISUAL PIPELINES · HTTP AUTOMATION · DEBUG TOOLING**
 
-**Visual pipeline builder for HTTP automation and data checking**
-
-[![Release](https://img.shields.io/github/v/release/ZeraTS/ironbullet?style=flat-square&color=4f6ef7)](https://github.com/ZeraTS/ironbullet/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/ZeraTS/ironbullet/total?style=flat-square&color=22c55e)](https://github.com/ZeraTS/ironbullet/releases)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-mintlify-8b5cf6?style=flat-square)](https://zerats-ironbullet.mintlify.app/)
+[![Release](https://img.shields.io/github/v/release/notgate/Ironbullet?style=flat-square&color=303033)](https://github.com/notgate/Ironbullet/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/notgate/Ironbullet/total?style=flat-square&color=303033)](https://github.com/notgate/Ironbullet/releases)
+[![License](https://img.shields.io/badge/license-MIT-303033?style=flat-square)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-mintlify-303033?style=flat-square)](https://zerats-ironbullet.mintlify.app/)
 
 </div>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/ironbullet-hero-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/media/ironbullet-hero-light.png">
+    <img src="docs/media/ironbullet-hero-light.png" alt="Ironbullet Signal Path pipeline with HTTP, parsing, and key-check blocks" width="100%">
+  </picture>
+</p>
+
 ---
 
-IronBullet is a desktop automation toolkit built around a visual, drag-and-drop pipeline editor. Chain together 50+ specialized blocks — HTTP requests, parsers, crypto functions, browser automation, protocol clients — and run them against full datasets with multi-threaded job execution.
+Ironbullet is a desktop automation toolkit built around a visual, drag-and-drop pipeline editor. Chain together 50+ specialized blocks — HTTP requests, parsers, crypto functions, browser automation, protocol clients — and run them against full datasets with multi-threaded job execution.
 
 ## Features
 
@@ -48,7 +54,7 @@ Extract and run `ironbullet` (or `ironbullet.exe`). The sidecar binary (`reqflow
 
 ## Quick Start
 
-1. Launch IronBullet
+1. Launch Ironbullet
 2. Add blocks from the left palette or press **Ctrl+K**
 3. Click a block to open its settings in the right panel
 4. Press **F5** to run a debug test with a single data line
@@ -135,8 +141,8 @@ Extract and run `ironbullet` (or `ironbullet.exe`). The sidecar binary (`reqflow
 **Requirements:** Rust 1.80+, Node.js 20+, Go 1.23+
 
 ```bash
-git clone https://github.com/ZeraTS/ironbullet.git
-cd ironbullet
+git clone https://github.com/notgate/Ironbullet.git
+cd Ironbullet
 
 # 1. Build the frontend
 cd gui && npm install && npm run build && cd ..

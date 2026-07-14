@@ -38,6 +38,7 @@
 	class="fixed top-0 left-0 right-0 flex items-center bg-surface h-7 select-none panel-raised z-[9999]"
 >
 	<span class="flex-1 px-2 text-[11px] text-muted-foreground tracking-wide flex items-center gap-1.5">
+		<img src="/ironbullet-logo.png" alt="" aria-hidden="true" draggable="false" class="h-3 w-3 rounded-[3px]" />
 		Ironbullet
 		<span class="text-muted-foreground/50 text-[10px]">{app.updateCurrentVersion}</span>
 	</span>
