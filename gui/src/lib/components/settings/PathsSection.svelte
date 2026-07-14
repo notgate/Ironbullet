@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
-	import { send, savePipeline } from '$lib/ipc';
+	import { send, savePipeline, saveSettings } from '$lib/ipc';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 
@@ -97,9 +97,8 @@
 				const val = (e.target as HTMLInputElement).value;
 				(app.config as any).chrome_executable_path = val;
 			}}
-			onblur={(e) => {
-				const val = (e.target as HTMLInputElement).value;
-				send('save_settings', { chrome_executable_path: val });
+			onblur={() => {
+				saveSettings();
 			}}
 			class="w-full skeu-input text-[10px] font-mono mt-1"
 			placeholder="Auto-detect (leave blank)"

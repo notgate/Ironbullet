@@ -84,6 +84,7 @@ export interface HttpRequestSettings {
 	custom_cookies: string;
 	/** When false, skip TLS certificate verification (for debugging / self-signed certs) */
 	ssl_verify: boolean;
+	proxy_insecure: boolean;
 	/** Dash-separated IANA cipher suite IDs — overrides browser profile defaults. Empty = use profile default. */
 	cipher_suites: string;
 	/**
@@ -93,6 +94,12 @@ export interface HttpRequestSettings {
 	 * - 'WreqTLS': Rust-native wreq + BoringSSL — 100+ browser emulation profiles, cookie persistence.
 	 */
 	tls_client: 'AzureTLS' | 'RustTLS' | 'WreqTLS';
+	/** AzureTLS browser profile override. Empty = inherit pipeline browser settings. */
+	browser_profile: string;
+	/** Per-block AzureTLS JA3 override. Empty = inherit pipeline settings. */
+	ja3_override: string;
+	/** Per-block AzureTLS HTTP/2 fingerprint override. Empty = inherit pipeline settings. */
+	http2fp_override: string;
 	/** WreqTLS emulation profile label. e.g. "Chrome134", "Firefox136", "Safari18". Default = "Chrome134". */
 	wreq_emulation: string;
 }

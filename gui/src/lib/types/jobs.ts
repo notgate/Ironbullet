@@ -3,7 +3,7 @@ import type { RunnerStats } from './runtime';
 
 export type JobState = 'Queued' | 'Waiting' | 'Running' | 'Paused' | 'Completed' | 'Stopped';
 
-export type DataSourceType = 'File' | 'Url' | 'Inline' | 'Range' | 'Combinations';
+export type DataSourceType = 'File' | 'Folder' | 'Url' | 'Inline' | 'Range' | 'Combinations';
 
 export interface DataSource {
 	source_type: DataSourceType;
@@ -36,4 +36,9 @@ export interface Job {
 	started: string | null;
 	completed: string | null;
 	stats: RunnerStats;
+	job_type: 'Config' | 'ProxyCheck';
+	proxy_check_url: string;
+	proxy_check_list: string;
+	proxy_check_type: string;
+	custom_input_values: Record<string, string>;
 }

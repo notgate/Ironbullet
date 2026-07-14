@@ -15,6 +15,14 @@ export interface Pipeline {
 	browser_settings: BrowserSettings;
 	runner_settings: RunnerSettings;
 	output_settings: OutputSettings;
+	custom_inputs: CustomInput[];
+}
+
+export interface CustomInput {
+	name: string;
+	description: string;
+	input_type: string;
+	default_value: string;
 }
 
 export interface Block {

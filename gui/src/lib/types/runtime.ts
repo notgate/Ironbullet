@@ -9,11 +9,13 @@ export interface ResultEntry {
 	captures: Record<string, string>;
 	error?: string | null;
 	ts_ms: number;
+	block_results: BlockResult[];
 }
 
 export interface RunnerStats {
 	total: number;
 	processed: number;
+	consumed: number;
 	hits: number;
 	fails: number;
 	bans: number;

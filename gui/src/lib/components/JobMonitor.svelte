@@ -874,7 +874,7 @@ Error handling
 		<div class="menu-sep"></div>
 		<button class="menu-item menu-item-danger w-full text-left"
 			disabled={jobCtxMenu.job.state === 'Running' || jobCtxMenu.job.state === 'Queued'}
-			onclick={() => { send('delete_job', { id: (jobCtxMenu!.job as any).id }); closeJobCtxMenu(); }}>
+			onclick={() => { removeJob((jobCtxMenu!.job as any).id); closeJobCtxMenu(); }}>
 			Delete
 		</button>
 	</div>

@@ -85,6 +85,7 @@ export function saveSettings() {
         default_proxy_path: app.defaultProxyPath,
         configs_path: app.configsPath,
         results_path: app.resultsPath,
+        chrome_executable_path: (app.config as any)?.chrome_executable_path || '',
         plugins_path: (app.config as any)?.plugins_path || '',
     });
 }
@@ -292,7 +293,7 @@ if (cfg.collections_path) app.collectionsPath = cfg.collections_path;
 					else if (field === 'job_config') app.pendingJobConfig = path;
 					else if (field === 'chrome_exe') {
 						(app.config as any).chrome_executable_path = path;
-						send('save_settings', { chrome_executable_path: path });
+						saveSettings();
 					} else if (field === 'proxy_group_source') {
 						// One-shot callback registered by browseGroupSourceFile() in ProxiesSection
 						const cb = (window as any).__proxyGroupFilePicked;
