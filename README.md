@@ -9,7 +9,6 @@
 [![Release](https://img.shields.io/github/v/release/notgate/Ironbullet?style=flat-square&color=303033)](https://github.com/notgate/Ironbullet/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/notgate/Ironbullet/total?style=flat-square&color=303033)](https://github.com/notgate/Ironbullet/releases)
 [![License](https://img.shields.io/badge/license-MIT-303033?style=flat-square)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-Starlight-303033?style=flat-square)](https://notgate.github.io/Ironbullet/)
 
 </div>
 
