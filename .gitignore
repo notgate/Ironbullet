@@ -3,6 +3,9 @@ target/
 node_modules/
 gui/build/
 gui/.svelte-kit/
+docs/site/node_modules/
+docs/site/.astro/
+docs/site/dist/
 *.exe
 sidecar/go.sum
 

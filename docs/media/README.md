@@ -6,8 +6,8 @@ These assets document the real Ironbullet interface and the project-owned visual
 
 - `ironbullet-logo.svg` — canonical sharp-path `I/B` monogram.
 - `ironbullet-logo.png` — transparent 512×512 raster derivative.
-- `ironbullet-hero-light.png` — transparent README hero for light GitHub themes.
-- `ironbullet-hero-dark.png` — transparent README hero for dark GitHub themes.
+- `ironbullet-hero-light.png` — Fluent-style README hero for light GitHub themes.
+- `ironbullet-hero-dark.png` — Fluent-style README hero for dark GitHub themes.
 - `ironbullet-interface.png` — cropped real v0.6.1 Windows interface capture used as the hero source.
 
 Runtime/package copies are generated at:
@@ -42,11 +42,10 @@ The authoritative crop removes only non-application borders, the Windows taskbar
 
 The heroes are deterministic Pillow compositions generated from `ironbullet-interface.png`. They use:
 
-- an editorial magnification of the real three-block pipeline;
-- near-monochrome treatment with 8% of the original UI color retained;
-- chamfered panel masks;
-- product-specific angular signal paths;
-- a real alpha channel and separate light/dark trace contrast.
+- the complete real interface capture at full color;
+- one Fluent-style rounded application frame with a subtle shadow;
+- restrained blue/teal ambient light matched to the interface accents;
+- separate dark and light GitHub-theme backgrounds.
 
 No interface pixels were AI-generated. No third-party logo or hero artwork is included. The visual hierarchy is an original Ironbullet treatment.
 

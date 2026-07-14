@@ -2,7 +2,7 @@
 """Regenerate Ironbullet brand assets from the committed v0.6.1 interface crop."""
 
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFilter
 import json
 import shutil
 
@@ -44,98 +44,53 @@ def make_logo():
     return image.resize((512, 512), Image.Resampling.LANCZOS)
 
 
-def chamfer_mask(width, height, cut=12):
-    mask = Image.new("L", (width, height), 0)
-    ImageDraw.Draw(mask).polygon(
-        [(cut, 0), (width, 0), (width, height - cut), (width - cut, height), (0, height), (0, cut)],
-        fill=255,
+def rounded_mask(size, radius):
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, size[0] - 1, size[1] - 1), radius=radius, fill=255
     )
     return mask
 
 
-def add_panel(canvas, image, position, size, shadow_alpha, border):
-    x, y = position
-    width, height = size
-    resized = image.resize(size, Image.Resampling.LANCZOS)
-    mask = chamfer_mask(width, height, 14)
-    shadow_mask = Image.new("L", canvas.size, 0)
-    ImageDraw.Draw(shadow_mask).bitmap((x + 14, y + 18), mask, fill=shadow_alpha)
-    shadow_mask = shadow_mask.filter(ImageFilter.GaussianBlur(22))
-    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    shadow.putalpha(shadow_mask)
-    canvas.alpha_composite(shadow)
-    layer = Image.new("RGBA", size, (0, 0, 0, 0))
-    layer.paste(resized, (0, 0), mask)
-    canvas.alpha_composite(layer, position)
-    ImageDraw.Draw(canvas).line(
-        [
-            (x + 14, y),
-            (x + width - 1, y),
-            (x + width - 1, y + height - 14),
-            (x + width - 14, y + height - 1),
-            (x, y + height - 1),
-            (x, y + 14),
-            (x + 14, y),
-        ],
-        fill=border,
-        width=2,
-        joint="curve",
-    )
-
-
-def add_trace_field(canvas, dark):
-    draw = ImageDraw.Draw(canvas)
-    line = (238, 238, 240, 45) if dark else (13, 13, 15, 36)
-    node = (245, 245, 246, 75) if dark else (10, 10, 12, 68)
-    paths = [
-        [(0, 115), (105, 115), (158, 168), (335, 168)],
-        [(0, 170), (82, 170), (132, 220), (320, 220)],
-        [(0, 250), (130, 250), (190, 310), (315, 310)],
-        [(0, 330), (92, 330), (156, 394), (315, 394)],
-        [(0, 570), (60, 570), (120, 510), (280, 510)],
-        [(0, 625), (120, 625), (170, 575), (360, 575)],
-    ]
-    for path in paths:
-        draw.line(path, fill=line, width=2)
-        for x, y in path[1:-1]:
-            draw.rectangle((x - 3, y - 3, x + 3, y + 3), fill=node)
-    for y in (120, 164, 208):
-        draw.line([(1440, y), (1520, y), (1560, y + 22), (1600, y + 22)], fill=line, width=2)
-        draw.rectangle((1517, y - 3, 1523, y + 3), fill=node)
-
-
 def make_hero(interface, dark):
-    gray = ImageOps.grayscale(interface)
-    gray_rgba = Image.merge("RGBA", (gray, gray, gray, interface.getchannel("A")))
-    steel = Image.blend(gray_rgba, interface, 0.08)
-    canvas = Image.new("RGBA", (1600, 700), (0, 0, 0, 0))
-    add_trace_field(canvas, dark)
-    add_panel(
-        canvas,
-        steel,
-        (300, 28),
-        (1240, 640),
-        115 if dark else 78,
-        (242, 242, 244, 55) if dark else (18, 18, 20, 52),
+    """Frame the real interface in a single Fluent-style rounded surface."""
+    background = (12, 13, 15, 255) if dark else (242, 244, 247, 255)
+    glow_alpha = 38 if dark else 26
+    frame_fill = (26, 28, 31, 255) if dark else (255, 255, 255, 255)
+    border = (49, 53, 58, 255) if dark else (191, 196, 202, 255)
+    canvas = Image.new("RGBA", (1600, 940), background)
+
+    glow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    glow_draw.ellipse((-250, -250, 760, 760), fill=(0, 120, 212, glow_alpha))
+    glow_draw.ellipse((1040, 610, 1850, 1320), fill=(0, 180, 180, glow_alpha // 2))
+    canvas.alpha_composite(glow.filter(ImageFilter.GaussianBlur(100)))
+
+    card_width = 1450
+    card_height = round(interface.height * card_width / interface.width)
+    screenshot = interface.resize((card_width, card_height), Image.Resampling.LANCZOS)
+    x = (canvas.width - card_width) // 2
+    y = 104
+
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (x + 8, y + 16, x + card_width + 8, y + card_height + 16),
+        radius=24,
+        fill=(0, 0, 0, 105),
     )
-    strip = steel.crop((310, 100, 1435, 310))
-    add_panel(
-        canvas,
-        strip,
-        (72, 468),
-        (860, 161),
-        145 if dark else 92,
-        (245, 245, 246, 72) if dark else (15, 15, 17, 64),
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(18)))
+
+    frame = Image.new("RGBA", (card_width + 12, card_height + 12), frame_fill)
+    frame.putalpha(rounded_mask(frame.size, 27))
+    canvas.alpha_composite(frame, (x - 6, y - 6))
+    screenshot.putalpha(rounded_mask(screenshot.size, 21))
+    canvas.alpha_composite(screenshot, (x, y))
+    ImageDraw.Draw(canvas).rounded_rectangle(
+        (x - 6, y - 6, x + card_width + 5, y + card_height + 5),
+        radius=27,
+        outline=border,
+        width=2,
     )
-    draw = ImageDraw.Draw(canvas)
-    link = (244, 244, 245, 72) if dark else (12, 12, 14, 62)
-    for path in (
-        [(932, 496), (972, 496), (992, 516), (1032, 516)],
-        [(932, 590), (972, 590), (992, 570), (1032, 570)],
-    ):
-        draw.line(path, fill=link, width=2)
-        for x, y in path[1:-1]:
-            draw.rectangle((x - 3, y - 3, x + 3, y + 3), fill=link)
     return canvas
 
 

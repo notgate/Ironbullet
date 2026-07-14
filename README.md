@@ -9,7 +9,7 @@
 [![Release](https://img.shields.io/github/v/release/notgate/Ironbullet?style=flat-square&color=303033)](https://github.com/notgate/Ironbullet/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/notgate/Ironbullet/total?style=flat-square&color=303033)](https://github.com/notgate/Ironbullet/releases)
 [![License](https://img.shields.io/badge/license-MIT-303033?style=flat-square)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-mintlify-303033?style=flat-square)](https://zerats-ironbullet.mintlify.app/)
+[![Docs](https://img.shields.io/badge/docs-Starlight-303033?style=flat-square)](https://notgate.github.io/Ironbullet/)
 
 </div>
 
@@ -23,7 +23,7 @@
 
 ---
 
-Ironbullet is a desktop automation toolkit built around a visual, drag-and-drop pipeline editor. Chain together 50+ specialized blocks — HTTP requests, parsers, crypto functions, browser automation, protocol clients — and run them against full datasets with multi-threaded job execution.
+Ironbullet is a desktop automation toolkit built around a visual, drag-and-drop pipeline editor. Chain together supported blocks for HTTP requests, parsers, checks, transformations, browser automation, and protocol clients, then run them against authorized datasets with multi-threaded job execution.
 
 ## Features
 
@@ -66,8 +66,8 @@ Extract and run `ironbullet` (or `ironbullet.exe`). The sidecar binary (`reqflow
 <details>
 <summary><b>HTTP</b> — Requests with full header/cookie/body control</summary>
 
-- `HttpRequest` — Send HTTP/1.1, HTTP/2, HTTP/3 requests via AzureTLS, RustTLS, or WreqTLS
-- Custom headers, cookies, body (form/raw/multipart)
+- `HttpRequest` — Send configurable HTTP requests via AzureTLS, RustTLS, or WreqTLS
+- Custom headers, cookies, and form/raw request bodies
 - Per-request JA3, HTTP/2 fingerprint, proxy, and browser profile overrides
 
 </details>
@@ -101,7 +101,7 @@ Extract and run `ironbullet` (or `ironbullet.exe`). The sidecar binary (`reqflow
 
 - `IfElse` — Conditional branching
 - `Loop` — Iterate over lists or repeat N times
-- `SetVariable`, `CaseSwitch`, `Script` (JavaScript), `Delay`
+- `SetVariable`, `CaseSwitch`, and `Delay`
 
 </details>
 
@@ -116,7 +116,7 @@ Extract and run `ironbullet` (or `ironbullet.exe`). The sidecar binary (`reqflow
 <details>
 <summary><b>Protocols</b> — Raw network clients</summary>
 
-- TCP, UDP, WebSocket, FTP, SSH, IMAP, SMTP, POP3
+- TCP, UDP, FTP, SSH, IMAP, SMTP, POP3
 
 </details>
 
