@@ -66,11 +66,19 @@ def make_hero(interface, dark):
     glow_draw.ellipse((1040, 610, 1850, 1320), fill=(0, 180, 180, glow_alpha // 2))
     canvas.alpha_composite(glow.filter(ImageFilter.GaussianBlur(100)))
 
+    # The committed source capture begins mid-way through its native title bar.
+    # Trim that damaged strip, then present the unmodified real interface beneath
+    # a complete outer application title bar rather than showing a visibly clipped
+    # window at the top of the README hero.
+    source_top_trim = 18
+    titlebar_height = 34
     card_width = 1450
-    card_height = round(interface.height * card_width / interface.width)
-    screenshot = interface.resize((card_width, card_height), Image.Resampling.LANCZOS)
+    content = interface.crop((0, source_top_trim, interface.width, interface.height))
+    content_height = round(content.height * card_width / content.width)
+    screenshot = content.resize((card_width, content_height), Image.Resampling.LANCZOS)
+    card_height = titlebar_height + content_height
     x = (canvas.width - card_width) // 2
-    y = 104
+    y = 88
 
     shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle(
@@ -80,11 +88,22 @@ def make_hero(interface, dark):
     )
     canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(18)))
 
+    titlebar_fill = (31, 33, 36, 255) if dark else (249, 250, 252, 255)
+    titlebar_text = (209, 213, 219, 255) if dark else (48, 52, 57, 255)
+    window = Image.new("RGBA", (card_width, card_height), frame_fill)
+    window_draw = ImageDraw.Draw(window)
+    window_draw.rectangle((0, 0, card_width, titlebar_height), fill=titlebar_fill)
+    window_draw.line((0, titlebar_height - 1, card_width, titlebar_height - 1), fill=border, width=1)
+    window_draw.text((18, 9), "Ironbullet  ·  Signal Path", fill=titlebar_text)
+    for control_x in (card_width - 70, card_width - 45, card_width - 20):
+        window_draw.ellipse((control_x, 14, control_x + 5, 19), fill=titlebar_text)
+    window.alpha_composite(screenshot, (0, titlebar_height))
+    window.putalpha(rounded_mask(window.size, 21))
+
     frame = Image.new("RGBA", (card_width + 12, card_height + 12), frame_fill)
     frame.putalpha(rounded_mask(frame.size, 27))
     canvas.alpha_composite(frame, (x - 6, y - 6))
-    screenshot.putalpha(rounded_mask(screenshot.size, 21))
-    canvas.alpha_composite(screenshot, (x, y))
+    canvas.alpha_composite(window, (x, y))
     ImageDraw.Draw(canvas).rounded_rectangle(
         (x - 6, y - 6, x + card_width + 5, y + card_height + 5),
         radius=27,
