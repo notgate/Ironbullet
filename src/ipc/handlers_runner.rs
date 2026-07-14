@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 use ironbullet::pipeline::engine::ExecutionContext;
 use ironbullet::runner::data_pool::DataPool;
 use ironbullet::runner::proxy_pool::{ProxyPool, ProxyType};
-use ironbullet::runner::{HitResult, RunnerOrchestrator};
+use ironbullet::runner::{HitResult, RunnerOrchestrator, RunnerSetup};
 
 use super::{resolve_sidecar_path, AppState, IpcResponse};
 
@@ -317,18 +317,18 @@ pub(super) fn start_runner(
                     super::find_chrome_executable()
                 }
             };
-            let runner = Arc::new(RunnerOrchestrator::new(
+            let runner = Arc::new(RunnerOrchestrator::new(RunnerSetup {
                 pipeline,
                 proxy_mode,
                 data_pool,
                 proxy_pool,
                 sidecar_tx,
-                threads,
+                thread_count: threads,
                 hits_tx,
-                Some(pm),
-                chrome_exe,
-                std::collections::HashMap::new(),
-            ));
+                plugin_manager: Some(pm),
+                chrome_executable_path: chrome_exe,
+                custom_input_values: std::collections::HashMap::new(),
+            }));
 
             s.runner = Some(runner.clone());
             s.hits.clear();

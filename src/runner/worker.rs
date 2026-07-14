@@ -12,23 +12,43 @@ use crate::pipeline::engine::ExecutionContext;
 use crate::pipeline::{BotStatus, Pipeline, ProxyMode};
 use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 
-pub(crate) async fn run_worker(
-    pipeline: Pipeline,
-    proxy_mode: ProxyMode,
-    max_retries: u32,
-    data_pool: Arc<DataPool>,
-    proxy_pool: Arc<ProxyPool>,
-    sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
-    running: Arc<AtomicBool>,
-    paused: Arc<AtomicBool>,
-    stats: Arc<RunnerStatsInner>,
-    hits_tx: mpsc::Sender<HitResult>,
-    output_writer: Option<Arc<OutputWriter>>,
-    plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
-    chrome_executable_path: Option<std::path::PathBuf>,
-    result_feed: Arc<Mutex<VecDeque<ResultEntry>>>,
-    custom_input_values: std::collections::HashMap<String, String>,
-) {
+/// Per-worker execution state cloned from a `RunnerOrchestrator` at spawn time.
+pub(crate) struct WorkerRuntime {
+    pub(crate) pipeline: Pipeline,
+    pub(crate) proxy_mode: ProxyMode,
+    pub(crate) max_retries: u32,
+    pub(crate) data_pool: Arc<DataPool>,
+    pub(crate) proxy_pool: Arc<ProxyPool>,
+    pub(crate) sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
+    pub(crate) running: Arc<AtomicBool>,
+    pub(crate) paused: Arc<AtomicBool>,
+    pub(crate) stats: Arc<RunnerStatsInner>,
+    pub(crate) hits_tx: mpsc::Sender<HitResult>,
+    pub(crate) output_writer: Option<Arc<OutputWriter>>,
+    pub(crate) plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
+    pub(crate) chrome_executable_path: Option<std::path::PathBuf>,
+    pub(crate) result_feed: Arc<Mutex<VecDeque<ResultEntry>>>,
+    pub(crate) custom_input_values: std::collections::HashMap<String, String>,
+}
+
+pub(crate) async fn run_worker(runtime: WorkerRuntime) {
+    let WorkerRuntime {
+        pipeline,
+        proxy_mode,
+        max_retries,
+        data_pool,
+        proxy_pool,
+        sidecar_tx,
+        running,
+        paused,
+        stats,
+        hits_tx,
+        output_writer,
+        plugin_manager,
+        chrome_executable_path,
+        result_feed,
+        custom_input_values,
+    } = runtime;
     stats.active_threads.fetch_add(1, Ordering::Relaxed);
 
     // Session IDs are generated PER CREDENTIAL so the azuretls cookie jar resets

@@ -13,7 +13,7 @@ use crate::import::import_config_bytes;
 use crate::pipeline::Pipeline;
 use crate::runner::data_pool::DataPool;
 use crate::runner::proxy_pool::ProxyPool;
-use crate::runner::{HitResult, RunnerOrchestrator};
+use crate::runner::{HitResult, RunnerOrchestrator, RunnerSetup};
 use crate::sidecar::native::create_native_backend;
 
 pub struct CliArgs {
@@ -233,18 +233,18 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
     let debug = cli.debug;
     let proxy_mode = pipeline.proxy_settings.proxy_mode.clone();
 
-    let orchestrator = Arc::new(RunnerOrchestrator::new(
+    let orchestrator = Arc::new(RunnerOrchestrator::new(RunnerSetup {
         pipeline,
         proxy_mode,
         data_pool,
         proxy_pool,
         sidecar_tx,
-        threads,
+        thread_count: threads,
         hits_tx,
-        None,
-        None,                             // chrome_executable_path — not used in CLI mode
-        std::collections::HashMap::new(), // no custom inputs in CLI mode
-    ));
+        plugin_manager: None,
+        chrome_executable_path: None,
+        custom_input_values: std::collections::HashMap::new(),
+    }));
 
     eprintln!("[*] starting with {} threads", threads);
 

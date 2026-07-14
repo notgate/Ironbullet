@@ -60,6 +60,23 @@ pub struct RunnerStats {
 /// of work at typical CPM rates; keeping it small avoids lock contention.
 const RESULT_FEED_CAP: usize = 500;
 
+/// Explicit dependencies required to start a pipeline runner.
+///
+/// A named setup prevents GUI, queued-job, and CLI callers from accidentally
+/// swapping positional arguments as the runner evolves.
+pub struct RunnerSetup {
+    pub pipeline: Pipeline,
+    pub proxy_mode: ProxyMode,
+    pub data_pool: DataPool,
+    pub proxy_pool: ProxyPool,
+    pub sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
+    pub thread_count: usize,
+    pub hits_tx: mpsc::Sender<HitResult>,
+    pub plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
+    pub chrome_executable_path: Option<std::path::PathBuf>,
+    pub custom_input_values: std::collections::HashMap<String, String>,
+}
+
 pub struct RunnerOrchestrator {
     pipeline: Pipeline,
     proxy_mode: ProxyMode,
@@ -110,18 +127,19 @@ pub struct HitResult {
 }
 
 impl RunnerOrchestrator {
-    pub fn new(
-        pipeline: Pipeline,
-        proxy_mode: ProxyMode,
-        data_pool: DataPool,
-        proxy_pool: ProxyPool,
-        sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
-        thread_count: usize,
-        hits_tx: mpsc::Sender<HitResult>,
-        plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
-        chrome_executable_path: Option<std::path::PathBuf>,
-        custom_input_values: std::collections::HashMap<String, String>,
-    ) -> Self {
+    pub fn new(setup: RunnerSetup) -> Self {
+        let RunnerSetup {
+            pipeline,
+            proxy_mode,
+            data_pool,
+            proxy_pool,
+            sidecar_tx,
+            thread_count,
+            hits_tx,
+            plugin_manager,
+            chrome_executable_path,
+            custom_input_values,
+        } = setup;
         let ow = if pipeline.output_settings.save_to_file {
             Some(Arc::new(output::OutputWriter::new(
                 &pipeline.output_settings,
@@ -214,9 +232,9 @@ impl RunnerOrchestrator {
             let custom_inputs = self.custom_input_values.clone();
 
             let handle = tokio::spawn(async move {
-                worker::run_worker(
+                worker::run_worker(worker::WorkerRuntime {
                     pipeline,
-                    proxy_mode_w,
+                    proxy_mode: proxy_mode_w,
                     max_retries,
                     data_pool,
                     proxy_pool,
@@ -229,8 +247,8 @@ impl RunnerOrchestrator {
                     plugin_manager,
                     chrome_executable_path,
                     result_feed,
-                    custom_inputs,
-                )
+                    custom_input_values: custom_inputs,
+                })
                 .await;
             });
             handles.push(handle);

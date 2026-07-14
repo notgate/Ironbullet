@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::data_pool::DataPool;
 use super::job::{DataSourceType, Job, JobState, StartCondition};
 use super::proxy_pool::{ProxyEntry, ProxyPool, ProxyType};
-use super::{HitResult, RunnerOrchestrator, RunnerStats};
+use super::{HitResult, RunnerOrchestrator, RunnerSetup, RunnerStats};
 use crate::pipeline::{ProxyMode, ProxySettings, ProxySourceType};
 use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 
@@ -460,18 +460,18 @@ impl JobManager {
         let (proxy_pool, proxy_mode) = build_proxy_pool(proxy_settings_ref);
         let (hits_tx, hits_rx) = mpsc::channel::<HitResult>(1024);
 
-        let runner = Arc::new(RunnerOrchestrator::new(
-            job.pipeline.clone(),
+        let runner = Arc::new(RunnerOrchestrator::new(RunnerSetup {
+            pipeline: job.pipeline.clone(),
             proxy_mode,
             data_pool,
             proxy_pool,
             sidecar_tx,
-            job.thread_count,
+            thread_count: job.thread_count,
             hits_tx,
             plugin_manager,
             chrome_executable_path,
-            job.custom_input_values.clone(),
-        ));
+            custom_input_values: job.custom_input_values.clone(),
+        }));
 
         job.state = JobState::Running;
         job.started = Some(Utc::now());
