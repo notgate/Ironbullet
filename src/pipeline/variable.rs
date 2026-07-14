@@ -119,6 +119,16 @@ impl VariableStore {
         self.data.insert(key.to_string(), value);
     }
 
+    /// Clear a data variable and any children below its dotted namespace.
+    /// HTTP response variables use a prefix (for example `RESPONSE.STATUS`), so
+    /// a failed request must clear the full prior response tree rather than leave
+    /// stale headers or cookies available to a later KeyCheck.
+    pub fn clear_data_prefix(&mut self, prefix: &str) {
+        let dotted_prefix = format!("{prefix}.");
+        self.data
+            .retain(|key, _| key != prefix && !key.starts_with(&dotted_prefix));
+    }
+
     pub fn set_input(&mut self, key: &str, value: String) {
         self.input.insert(key.to_string(), value);
     }

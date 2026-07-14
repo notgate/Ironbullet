@@ -203,3 +203,103 @@ async fn multipart_block_fails_instead_of_sending_an_invalid_raw_body() {
     assert!(error.to_string().contains("Multipart HTTP bodies"));
     assert_eq!(ctx.status, BotStatus::Error);
 }
+
+#[tokio::test]
+async fn safe_mode_http_failure_clears_prior_response_before_keycheck() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let _ = read_http_request(&mut stream);
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+            .unwrap();
+    });
+    let failed_address = {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        address
+    };
+
+    let mut successful_request = Block::new(BlockType::HttpRequest);
+    if let BlockSettings::HttpRequest(settings) = &mut successful_request.settings {
+        settings.url = format!("http://{address}/first");
+        settings.tls_client = TlsClient::RustTLS;
+        settings.response_var = "RESPONSE".into();
+    }
+    let mut failed_request = Block::new(BlockType::HttpRequest);
+    failed_request.safe_mode = true;
+    if let BlockSettings::HttpRequest(settings) = &mut failed_request.settings {
+        settings.url = format!("http://{failed_address}/closed");
+        settings.tls_client = TlsClient::RustTLS;
+        settings.timeout_ms = 500;
+        settings.response_var = "RESPONSE".into();
+    }
+    let mut stale_status_check = Block::new(BlockType::KeyCheck);
+    stale_status_check.settings = BlockSettings::KeyCheck(KeyCheckSettings {
+        keychains: vec![Keychain {
+            result: BotStatus::Success,
+            conditions: vec![KeyCondition {
+                source: "data.RESPONSECODE".into(),
+                comparison: Comparison::EqualTo,
+                value: "200".into(),
+            }],
+            mode: KeychainMode::And,
+        }],
+        stop_on_fail: false,
+    });
+
+    let sidecar_tx = create_native_backend();
+    let mut ctx = ExecutionContext::new("safe-mode-fixture".into());
+    ctx.execute_blocks(
+        &[successful_request, failed_request, stale_status_check],
+        &sidecar_tx,
+    )
+    .await
+    .unwrap();
+    server.join().unwrap();
+
+    assert_eq!(ctx.variables.get("data.RESPONSE"), None);
+    assert_eq!(ctx.variables.get("data.RESPONSE.STATUS"), None);
+    assert_eq!(ctx.variables.get("data.RESPONSECODE").as_deref(), Some(""));
+    assert!(ctx
+        .variables
+        .get("data.RESPONSE.ERROR")
+        .is_some_and(|error| !error.is_empty()));
+    assert_eq!(ctx.status, BotStatus::None);
+}
+
+#[test]
+fn empty_and_keychain_does_not_classify_every_input() {
+    let mut ctx = ExecutionContext::new("keycheck-fixture".into());
+    ctx.execute_keycheck(&KeyCheckSettings {
+        keychains: vec![Keychain {
+            result: BotStatus::Success,
+            conditions: Vec::new(),
+            mode: KeychainMode::And,
+        }],
+        stop_on_fail: false,
+    })
+    .unwrap();
+
+    assert_eq!(ctx.status, BotStatus::None);
+}
+
+#[test]
+fn invalid_numeric_keycheck_values_do_not_coerce_to_zero() {
+    let mut ctx = ExecutionContext::new("keycheck-fixture".into());
+    ctx.variables
+        .set_user("VALUE", "not-a-number".into(), false);
+
+    assert!(!ctx.evaluate_condition(&KeyCondition {
+        source: "VALUE".into(),
+        comparison: Comparison::LessThan,
+        value: "1".into(),
+    }));
+    assert!(!ctx.evaluate_condition(&KeyCondition {
+        source: "MISSING".into(),
+        comparison: Comparison::GreaterThan,
+        value: "-1".into(),
+    }));
+}

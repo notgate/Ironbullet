@@ -23,12 +23,10 @@ export const BLOCK_CATALOG: BlockMeta[] = [
 	{ type: 'Loop', label: 'Loop', category: 'Control', color: '#dcdcaa', icon: 'repeat' },
 	{ type: 'Delay', label: 'Delay', category: 'Control', color: '#dcdcaa', icon: 'clock' },
 	{ type: 'CaseSwitch', label: 'Case / Switch', category: 'Control', color: '#dcdcaa', icon: 'list-tree' },
-	{ type: 'Script', label: 'Script', category: 'Control', color: '#dcdcaa', icon: 'terminal' },
 	{ type: 'Log', label: 'Log', category: 'Utilities', color: '#858585', icon: 'file-text' },
 	{ type: 'SetVariable', label: 'Set Variable', category: 'Utilities', color: '#858585', icon: 'variable' },
 	{ type: 'ClearCookies', label: 'Clear Cookies', category: 'Utilities', color: '#858585', icon: 'cookie' },
 	{ type: 'Webhook', label: 'Webhook', category: 'Utilities', color: '#858585', icon: 'globe' },
-	{ type: 'WebSocket', label: 'WebSocket', category: 'Utilities', color: '#858585', icon: 'globe' },
 	// Protocol requests
 	{ type: 'TcpRequest', label: 'TCP Request', category: 'Requests', color: '#0078d4', icon: 'cable' },
 	{ type: 'UdpRequest', label: 'UDP Request', category: 'Requests', color: '#0078d4', icon: 'radio' },

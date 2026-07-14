@@ -8,6 +8,12 @@ impl ExecutionContext {
     ) -> crate::error::Result<()> {
         use crate::pipeline::block::settings_check::KeychainMode;
         for keychain in &settings.keychains {
+            // An empty condition list has no meaningful predicate. In particular,
+            // `Iterator::all` would otherwise make an empty AND keychain match
+            // unconditionally and classify every input as the configured result.
+            if keychain.conditions.is_empty() {
+                continue;
+            }
             let matched = match keychain.mode {
                 KeychainMode::And => keychain
                     .conditions
@@ -50,12 +56,16 @@ impl ExecutionContext {
             Comparison::MatchesRegex => regex::Regex::new(&target)
                 .map(|re| re.is_match(&source_val))
                 .unwrap_or(false),
-            Comparison::GreaterThan => {
-                source_val.parse::<f64>().unwrap_or(0.0) > target.parse::<f64>().unwrap_or(0.0)
-            }
-            Comparison::LessThan => {
-                source_val.parse::<f64>().unwrap_or(0.0) < target.parse::<f64>().unwrap_or(0.0)
-            }
+            Comparison::GreaterThan => source_val
+                .parse::<f64>()
+                .ok()
+                .zip(target.parse::<f64>().ok())
+                .is_some_and(|(source, target)| source > target),
+            Comparison::LessThan => source_val
+                .parse::<f64>()
+                .ok()
+                .zip(target.parse::<f64>().ok())
+                .is_some_and(|(source, target)| source < target),
             Comparison::Exists => !source_val.is_empty(),
             Comparison::NotExists => source_val.is_empty(),
         }

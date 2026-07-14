@@ -11,6 +11,13 @@ fn has_header(headers: &[Vec<String>], name: &str) -> bool {
 }
 
 impl ExecutionContext {
+    fn clear_http_response_state(&mut self, var_prefix: &str) {
+        self.variables.clear_data_prefix(var_prefix);
+        for alias in ["RESPONSECODE", "ADDRESS", "LASTRESPONSE", "LASTHEADERS"] {
+            self.variables.set_data(alias, String::new());
+        }
+    }
+
     pub(super) async fn execute_http_request(
         &mut self,
         block: &Block,
@@ -25,6 +32,13 @@ impl ExecutionContext {
                 "Multipart HTTP bodies require a field/boundary schema and are not supported by the native pipeline engine.".into(),
             ));
         }
+
+        let var_prefix = if settings.response_var.is_empty() {
+            "SOURCE"
+        } else {
+            &settings.response_var
+        };
+        self.clear_http_response_state(var_prefix);
 
         // ── Interpolate common request fields ─────────────────────────────────
         let url = self.variables.interpolate(&settings.url);
@@ -249,17 +263,13 @@ impl ExecutionContext {
 
         if let Some(ref err) = resp.error {
             if !err.is_empty() {
+                self.variables
+                    .set_data(&format!("{}.ERROR", var_prefix), err.clone());
                 return Err(crate::error::AppError::Sidecar(err.clone()));
             }
         }
 
         // ── Store response into pipeline variables ────────────────────────────
-        let var_prefix = if settings.response_var.is_empty() {
-            "SOURCE"
-        } else {
-            &settings.response_var
-        };
-
         // Body
         self.variables.set_data(var_prefix, resp.body.clone());
         // Status code

@@ -32,7 +32,7 @@ export type BlockType =
 	| 'IfElse' | 'Loop' | 'Delay' | 'Script' | 'Log' | 'SetVariable' | 'ClearCookies' | 'Webhook' | 'WebSocket'
 	| 'TcpRequest' | 'UdpRequest' | 'FtpRequest' | 'SshRequest' | 'ImapRequest' | 'SmtpRequest' | 'PopRequest'
 	| 'DateFunction' | 'CaseSwitch' | 'CookieContainer'
-	| 'CaptchaSolver' | 'CloudflareBypass' | 'LaravelCsrf'
+	| 'CaptchaSolver' | 'CloudflareBypass' | 'LaravelCsrf' | 'JwtToken' | 'HeaderSpoof'
 	| 'BrowserOpen' | 'NavigateTo' | 'ClickElement' | 'TypeText' | 'WaitForElement' | 'GetElementText' | 'Screenshot' | 'ExecuteJs'
 	| 'RandomUserAgent' | 'OcrCaptcha' | 'RecaptchaInvisible' | 'XacfSensor'
 	| 'RandomData' | 'DataDomeSensor' | 'Plugin' | 'AkamaiV3Sensor' | 'Group'
