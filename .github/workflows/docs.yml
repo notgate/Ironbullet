@@ -6,11 +6,15 @@ on:
     paths:
       - 'docs/site/**'
       - 'docs/media/**'
+      - 'src/pipeline/block/mod.rs'
+      - 'scripts/docs/verify_block_reference.py'
       - '.github/workflows/docs.yml'
   pull_request:
     paths:
       - 'docs/site/**'
       - 'docs/media/**'
+      - 'src/pipeline/block/mod.rs'
+      - 'scripts/docs/verify_block_reference.py'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -29,12 +33,26 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Verify block-reference coverage
+        run: python3 scripts/docs/verify_block_reference.py
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs/site/package-lock.json
+      - name: Install documentation dependencies
+        working-directory: docs/site
+        run: npm ci
+      - name: Build documentation site
+        working-directory: docs/site
+        run: npm run build
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/site
+          path: docs/site/dist
 
   deploy:
     if: github.event_name != 'pull_request'

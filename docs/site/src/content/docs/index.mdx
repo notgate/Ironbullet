@@ -1,24 +1,28 @@
 ---
-title: Ironbullet
+title: Ironbullet documentation
 slug: index
-description: A visual pipeline editor for request automation and debugging workflows.
+description: Build, navigate, debug, and reference every native pipeline block.
 ---
 
-Ironbullet is a desktop application for constructing, inspecting, and testing visual execution pipelines. A pipeline is made from blocks for request construction, parsing, checks, transformations, and controlled flow.
+# Ironbullet documentation
 
-## What the application does
+Ironbullet is a desktop visual pipeline editor for authorized request automation, response analysis, debugging, and job execution. This site is the product documentation for the current native pipeline model and interface.
 
-- Builds ordered pipelines with a visual editor.
-- Runs local debug executions with response and variable inspection.
-- Imports supported OpenBullet-compatible configuration formats.
-- Exports supported pipelines to Rust source.
+![Ironbullet visual pipeline editor](/Ironbullet/media/hero-dark.png)
 
-## Start with the supported path
+## Start here
 
-1. Create a pipeline.
-2. Add an **HTTP Request** block.
-3. Add a **Parse** block to extract response data.
-4. Add a **Key Check** to classify explicit conditions.
-5. Run against an authorized local or test endpoint.
+1. Read the [Interface tour](/Ironbullet/interface-tour/) to locate the palette, canvas, settings inspector, debugger, and jobs tools.
+2. Create a small pipeline with **HTTP Request**, **Parse**, and **Key Check**.
+3. Use Debug mode with an authorized test endpoint before starting a job.
+4. Use the [Block reference](/Ironbullet/blocks/) to configure every declared native block type.
 
-See [Capability status](/Ironbullet/capability-status/) before relying on an advanced block in a production configuration.
+## Documentation contract
+
+The block library distinguishes three states so that an imported configuration is never confused with a recommended new workflow:
+
+- **Palette** — available when building a new pipeline in the current interface.
+- **Compatibility-only** — readable for imported configurations but not available from the palette.
+- **Unavailable in native engine** — retained for compatibility, but the native runner returns an explicit unsupported-block error.
+
+See [Capability status](/Ironbullet/capability-status/) for the current execution contract.
