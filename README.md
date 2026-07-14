@@ -4,7 +4,7 @@
 
 <h1>Ironbullet</h1>
 
-**VISUAL PIPELINES · HTTP AUTOMATION · DEBUG TOOLING**
+**Bullet Software made with love**
 
 [![Release](https://img.shields.io/github/v/release/notgate/Ironbullet?style=flat-square&color=303033)](https://github.com/notgate/Ironbullet/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/notgate/Ironbullet/total?style=flat-square&color=303033)](https://github.com/notgate/Ironbullet/releases)
