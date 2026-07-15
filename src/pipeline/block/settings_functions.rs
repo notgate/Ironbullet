@@ -46,6 +46,31 @@ pub enum StringFnType {
     Length,
 }
 
+// ── Translate ──
+
+/// Deterministic exact-match lookup table. Each non-empty mapping line is
+/// `source => destination`; comments start with `#`. Unmatched input is passed
+/// through unchanged, which makes partial tables safe in a pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranslateSettings {
+    pub input_var: String,
+    pub output_var: String,
+    pub capture: bool,
+    #[serde(default)]
+    pub mappings: String,
+}
+
+impl Default for TranslateSettings {
+    fn default() -> Self {
+        Self {
+            input_var: String::new(),
+            output_var: "TRANSLATED".into(),
+            capture: false,
+            mappings: String::new(),
+        }
+    }
+}
+
 // ── List Function ──
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

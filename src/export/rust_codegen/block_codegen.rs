@@ -794,6 +794,36 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
                 }
             }
         }
+        BlockSettings::Translate(s) => {
+            let input = if vars.is_defined(&s.input_var) {
+                var_name(&s.input_var)
+            } else {
+                "source".into()
+            };
+            let letkw = vars.let_or_assign(&s.output_var);
+            let vn = var_name(&s.output_var);
+            code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+            code.push_str(&format!("{}    let input = {}.clone();\n", pad, input));
+            code.push_str(&format!("{}    let mut translated = input.clone();\n", pad));
+            code.push_str(&format!("{}    'translate: {{\n", pad));
+            for raw_line in s.mappings.lines() {
+                let line = raw_line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some((source, destination)) = line.split_once("=>") {
+                    code.push_str(&format!(
+                        "{}        if input == \"{}\" {{ translated = \"{}\".to_string(); break 'translate; }}\n",
+                        pad,
+                        escape_str(source.trim()),
+                        escape_str(destination.trim())
+                    ));
+                }
+            }
+            code.push_str(&format!("{}    }}\n", pad));
+            code.push_str(&format!("{}    translated\n", pad));
+            code.push_str(&format!("{}}};\n", pad));
+        }
         BlockSettings::ListFunction(s) => {
             let input = if vars.is_defined(&s.input_var) {
                 var_name(&s.input_var)
@@ -1536,6 +1566,27 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             } else {
                 code.push_str(&format!("{}{}{}= page.find_element(\"{}\").await?.attribute(\"{}\").await?.unwrap_or_default();\n",
                     pad, letkw, vn, escape_str(&s.selector), escape_str(&s.attribute)));
+            }
+        }
+        BlockSettings::GetDom(s) => {
+            let letkw = vars.let_or_assign(&s.output_var);
+            let vn = var_name(&s.output_var);
+            if s.selector.trim().is_empty() {
+                code.push_str(&format!("{}{}{}= page.content().await?;\n", pad, letkw, vn));
+            } else {
+                let property = if s.outer_html {
+                    "outerHTML"
+                } else {
+                    "innerHTML"
+                };
+                code.push_str(&format!(
+                    "{}{}{}= page.evaluate_expression(\"document.querySelector({})?.{} ?? ''\").await?.into_value::<String>().unwrap_or_default();\n",
+                    pad,
+                    letkw,
+                    vn,
+                    serde_json::to_string(&s.selector).unwrap_or_else(|_| "\"\"".into()).replace('"', "\\\""),
+                    property
+                ));
             }
         }
         BlockSettings::Screenshot(s) => {

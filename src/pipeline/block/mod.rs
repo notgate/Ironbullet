@@ -84,6 +84,7 @@ pub enum BlockType {
     Parse,
     KeyCheck,
     StringFunction,
+    Translate,
     ListFunction,
     CryptoFunction,
     ConversionFunction,
@@ -120,6 +121,7 @@ pub enum BlockType {
     TypeText,
     WaitForElement,
     GetElementText,
+    GetDom,
     Screenshot,
     ExecuteJs,
     // New blocks
@@ -165,6 +167,7 @@ impl BlockType {
             Self::Parse => "Parse",
             Self::KeyCheck => "Key Check",
             Self::StringFunction => "String Function",
+            Self::Translate => "Translate",
             Self::ListFunction => "List Function",
             Self::CryptoFunction => "Crypto Function",
             Self::ConversionFunction => "Conversion",
@@ -196,6 +199,7 @@ impl BlockType {
             Self::TypeText => "Type Text",
             Self::WaitForElement => "Wait For Element",
             Self::GetElementText => "Get Element Text",
+            Self::GetDom => "Get DOM",
             Self::Screenshot => "Screenshot",
             Self::ExecuteJs => "Execute JS",
             Self::RandomUserAgent => "Random User Agent",
@@ -250,6 +254,7 @@ impl BlockType {
             | Self::Parse => "Parsing",
             Self::KeyCheck => "Checks",
             Self::StringFunction
+            | Self::Translate
             | Self::ListFunction
             | Self::CryptoFunction
             | Self::ConversionFunction
@@ -281,6 +286,7 @@ impl BlockType {
             | Self::TypeText
             | Self::WaitForElement
             | Self::GetElementText
+            | Self::GetDom
             | Self::Screenshot
             | Self::ExecuteJs => "Browser",
             Self::JwtToken | Self::HeaderSpoof | Self::NuDataSensor => "Security",
@@ -319,6 +325,7 @@ impl BlockType {
             Self::StringFunction => {
                 BlockSettings::StringFunction(StringFunctionSettings::default())
             }
+            Self::Translate => BlockSettings::Translate(TranslateSettings::default()),
             Self::ListFunction => BlockSettings::ListFunction(ListFunctionSettings::default()),
             Self::CryptoFunction => {
                 BlockSettings::CryptoFunction(CryptoFunctionSettings::default())
@@ -362,6 +369,7 @@ impl BlockType {
             Self::GetElementText => {
                 BlockSettings::GetElementText(GetElementTextSettings::default())
             }
+            Self::GetDom => BlockSettings::GetDom(GetDomSettings::default()),
             Self::Screenshot => BlockSettings::Screenshot(ScreenshotSettings::default()),
             Self::ExecuteJs => BlockSettings::ExecuteJs(ExecuteJsSettings::default()),
             Self::RandomUserAgent => {
@@ -415,6 +423,7 @@ pub enum BlockSettings {
     Parse(ParseSettings),
     KeyCheck(KeyCheckSettings),
     StringFunction(StringFunctionSettings),
+    Translate(TranslateSettings),
     ListFunction(ListFunctionSettings),
     CryptoFunction(CryptoFunctionSettings),
     ConversionFunction(ConversionFunctionSettings),
@@ -451,6 +460,7 @@ pub enum BlockSettings {
     TypeText(TypeTextSettings),
     WaitForElement(WaitForElementSettings),
     GetElementText(GetElementTextSettings),
+    GetDom(GetDomSettings),
     Screenshot(ScreenshotSettings),
     ExecuteJs(ExecuteJsSettings),
     // New blocks

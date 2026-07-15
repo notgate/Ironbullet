@@ -6,6 +6,7 @@ export const BLOCK_CATALOG: BlockMeta[] = [
 	{ type: 'Parse', label: 'Parse', category: 'Parsing', color: '#4ec9b0', icon: 'scissors' },
 	{ type: 'KeyCheck', label: 'Key Check', category: 'Checks', color: '#d7ba7d', icon: 'shield-check' },
 	{ type: 'StringFunction', label: 'String Function', category: 'Functions', color: '#c586c0', icon: 'type' },
+	{ type: 'Translate', label: 'Translate', category: 'Functions', color: '#c586c0', icon: 'languages' },
 	{ type: 'ListFunction', label: 'List Function', category: 'Functions', color: '#c586c0', icon: 'list' },
 	{ type: 'CryptoFunction', label: 'Crypto Function', category: 'Functions', color: '#c586c0', icon: 'lock' },
 	{ type: 'ConversionFunction', label: 'Conversion', category: 'Functions', color: '#c586c0', icon: 'arrow-right-left' },
@@ -61,6 +62,7 @@ export const BLOCK_CATALOG: BlockMeta[] = [
 	{ type: 'TypeText', label: 'Type Text', category: 'Browser', color: '#e06c75', icon: 'keyboard' },
 	{ type: 'WaitForElement', label: 'Wait For Element', category: 'Browser', color: '#e06c75', icon: 'hourglass' },
 	{ type: 'GetElementText', label: 'Get Element Text', category: 'Browser', color: '#e06c75', icon: 'scan-text' },
+	{ type: 'GetDom', label: 'Get DOM', category: 'Browser', color: '#e06c75', icon: 'code-2' },
 	{ type: 'Screenshot', label: 'Screenshot', category: 'Browser', color: '#e06c75', icon: 'camera' },
 	{ type: 'ExecuteJs', label: 'Execute JS', category: 'Browser', color: '#e06c75', icon: 'terminal' },
 ];

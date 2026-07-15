@@ -14,6 +14,7 @@ export default defineConfig({
           { label: 'Overview', slug: 'index' },
           { label: 'Interface tour', slug: 'interface-tour' },
           { label: 'Install and build', slug: 'getting-started' },
+          { label: 'Embedded values and variables', slug: 'embedded-values' },
           { label: 'Pipeline model', slug: 'pipeline-model' },
         ] },
         { label: 'Block reference', items: [

@@ -125,6 +125,7 @@ fn scan_blocks_for_imports(blocks: &[Block], flags: &mut ImportFlags) {
             | BlockSettings::TypeText(_)
             | BlockSettings::WaitForElement(_)
             | BlockSettings::GetElementText(_)
+            | BlockSettings::GetDom(_)
             | BlockSettings::Screenshot(_)
             | BlockSettings::ExecuteJs(_) => flags.browser = true,
             BlockSettings::StringFunction(s) => match s.function_type {

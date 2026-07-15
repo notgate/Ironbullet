@@ -62,6 +62,34 @@
 		</div>
 	</div>
 
+<!-- ===================== TRANSLATE ===================== -->
+{:else if block.settings.type === 'Translate'}
+	<div class="space-y-1.5">
+		<div>
+			<label class={labelCls}>Input variable</label>
+			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" class={inputCls}
+				oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
+		</div>
+		<div>
+			<label class={labelCls}>Mappings</label>
+			<textarea value={block.settings.mappings} placeholder={'pending => PENDING\nactive => ACTIVE\n# unmatched values pass through'}
+				class="w-full skeu-input text-[11px] font-mono min-h-[120px] resize-y mt-0.5"
+				oninput={(e) => updateSettings('mappings', (e.target as HTMLTextAreaElement).value)}></textarea>
+			<p class="text-[9px] text-muted-foreground mt-0.5">One exact <code class="text-foreground/70">source =&gt; destination</code> mapping per line. Empty and <code class="text-foreground/70">#</code> comment lines are ignored; unmatched input is preserved.</p>
+		</div>
+		<div class="flex gap-2">
+			<div class="flex-1">
+				<label class={labelCls}>Output var</label>
+				<VariableInput value={block.settings.output_var} class={inputCls}
+					oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)} />
+			</div>
+			<label class="flex items-center gap-1 text-xs text-foreground pt-4">
+				<input type="checkbox" checked={block.settings.capture} onchange={() => updateSettings('capture', !block!.settings.capture)} class="skeu-checkbox" />
+				CAP
+			</label>
+		</div>
+	</div>
+
 <!-- ===================== LIST FUNCTION ===================== -->
 {:else if block.settings.type === 'ListFunction'}
 	{@const meta = getListFuncMeta(block.settings.function_type)}

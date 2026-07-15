@@ -36,12 +36,12 @@ export interface Block {
 
 export type BlockType =
 	| 'HttpRequest' | 'ParseLR' | 'ParseRegex' | 'ParseJSON' | 'ParseCSS' | 'ParseXPath' | 'ParseCookie' | 'Parse'
-	| 'KeyCheck' | 'StringFunction' | 'ListFunction' | 'CryptoFunction' | 'ConversionFunction'
+	| 'KeyCheck' | 'StringFunction' | 'Translate' | 'ListFunction' | 'CryptoFunction' | 'ConversionFunction'
 	| 'IfElse' | 'Loop' | 'Delay' | 'Script' | 'Log' | 'SetVariable' | 'ClearCookies' | 'Webhook' | 'WebSocket'
 	| 'TcpRequest' | 'UdpRequest' | 'FtpRequest' | 'SshRequest' | 'ImapRequest' | 'SmtpRequest' | 'PopRequest'
 	| 'DateFunction' | 'CaseSwitch' | 'CookieContainer'
 	| 'CaptchaSolver' | 'CloudflareBypass' | 'LaravelCsrf' | 'JwtToken' | 'HeaderSpoof'
-	| 'BrowserOpen' | 'NavigateTo' | 'ClickElement' | 'TypeText' | 'WaitForElement' | 'GetElementText' | 'Screenshot' | 'ExecuteJs'
+	| 'BrowserOpen' | 'NavigateTo' | 'ClickElement' | 'TypeText' | 'WaitForElement' | 'GetElementText' | 'GetDom' | 'Screenshot' | 'ExecuteJs'
 	| 'RandomUserAgent' | 'OcrCaptcha' | 'RecaptchaInvisible' | 'XacfSensor'
 	| 'RandomData' | 'DataDomeSensor' | 'Plugin' | 'AkamaiV3Sensor' | 'Group'
 	| 'ByteArray' | 'Constants' | 'Dictionary' | 'FloatFunction' | 'IntegerFunction' | 'TimeFunction' | 'GenerateGUID' | 'PhoneCountry' | 'LambdaParser'

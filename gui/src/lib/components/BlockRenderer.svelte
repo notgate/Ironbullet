@@ -152,6 +152,7 @@
 		}
 			case 'KeyCheck': return s.keychains.map((k: { result: string }) => k.result).join(', ');
 			case 'StringFunction': return `${s.function_type}(${s.input_var}) → ${s.output_var}`;
+			case 'Translate': return `${s.input_var} → ${s.output_var}`;
 			case 'ListFunction': return `${s.function_type}(${s.input_var}) → ${s.output_var}`;
 			case 'CryptoFunction': return `${s.function_type}(${s.input_var}) → ${s.output_var}`;
 			case 'ConversionFunction': return `${s.from_type} → ${s.to_type}: ${s.input_var}`;
@@ -183,6 +184,7 @@
 			case 'TypeText': return `${s.selector} ← "${s.text?.substring(0, 20) || ''}"`;
 			case 'WaitForElement': return `${s.selector} [${s.state}]`;
 			case 'GetElementText': return `${s.selector} → ${s.output_var}`;
+			case 'GetDom': return `${s.selector || 'full page'} → ${s.output_var}`;
 			case 'Screenshot': return s.full_page ? 'full page' : (s.selector || 'viewport');
 			case 'ExecuteJs': return s.code?.split('\n')[0]?.substring(0, 40) || '(empty)';
 			case 'Group': {

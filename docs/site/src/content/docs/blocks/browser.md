@@ -51,6 +51,13 @@ All entries use the selected block's settings panel. The focused configuration g
 - **Purpose:** Reads text from the configured element and stores it in an output variable.
 - **Configure:** Choose stable selectors, set timeouts deliberately, and configure the browser/output variable fields before running a full job.
 
+## Get DOM
+
+- **Rust type:** `GetDom`
+- **Availability:** Palette
+- **Purpose:** Stores the complete active page DOM, or the inner/outer HTML of the first matching CSS selector.
+- **Configure:** Leave Selector empty for the full page; set **Include selected element** for outer HTML; use a named output variable.
+
 ## Screenshot
 
 - **Rust type:** `Screenshot`

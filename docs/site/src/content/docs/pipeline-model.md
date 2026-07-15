@@ -12,7 +12,7 @@ A pipeline is an ordered list of blocks. During execution, blocks read from and 
 | `input.*` | Data supplied to a pipeline run |
 | `data.*` | Block output and response-scoped values |
 | `globals.*` | Shared configuration values |
-| `@name` | User variables and captures |
+| bare name | User variables and captures, such as `<TOKEN>` |
 
 Use explicit variable names at integration boundaries. Avoid relying on legacy response aliases when a request block has a named response variable.
 

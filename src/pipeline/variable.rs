@@ -94,13 +94,14 @@ impl VariableStore {
         } else if let Some(rest) = key.strip_prefix("globals.") {
             self.globals.get(rest).cloned()
         } else {
-            // Bare name: check user_vars first (ParseJSON output), then data namespace.
-            // HTTP blocks store RESPONSECODE/LASTRESPONSE/SOURCE via set_data —
-            // a bare "RESPONSECODE" should still resolve for convenience.
+            // Bare name: user variables override data, and wordlist slices are the
+            // final fallback. This makes `<USER>` a shorthand for `<input.USER>`
+            // without changing the behavior of explicit scoped references.
             self.user_vars
                 .get(key)
                 .map(|v| v.value.as_str())
                 .or_else(|| self.data.get(key).cloned())
+                .or_else(|| self.input.get(key).cloned())
         }
     }
 
@@ -210,6 +211,37 @@ impl VariableStore {
             map.insert(k.clone(), v.value.as_str());
         }
         map
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VariableStore;
+
+    #[test]
+    fn interpolation_resolves_input_shorthand_and_scoped_values() {
+        let mut variables = VariableStore::new();
+        variables.set_input("USER", "alice".into());
+        variables.set_input("PASS", "correct-horse".into());
+        variables.set_data("LOGIN.COOKIES.session", "session-123".into());
+        variables.set_user("TOKEN", "token-456".into(), true);
+
+        assert_eq!(
+            variables
+                .interpolate("u=<USER>; p=<input.PASS>; c=<data.LOGIN.COOKIES.session>; t=<TOKEN>"),
+            "u=alice; p=correct-horse; c=session-123; t=token-456"
+        );
+    }
+
+    #[test]
+    fn interpolation_leaves_openbullet_style_brackets_and_unknown_placeholders_literal() {
+        let mut variables = VariableStore::new();
+        variables.set_input("USER", "alice".into());
+
+        assert_eq!(
+            variables.interpolate("[USER] <MISSING> <USER"),
+            "[USER] <MISSING> <USER"
+        );
     }
 }
 

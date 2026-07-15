@@ -1,6 +1,24 @@
 use super::*;
 use helpers::{urldecoding, urlencoding};
 
+/// Apply the first exact mapping in a `source => destination` table.
+/// Invalid and comment lines are ignored; unmatched input is preserved.
+fn translate_exact(input: &str, mappings: &str) -> String {
+    for raw_line in mappings.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((source, destination)) = line.split_once("=>") else {
+            continue;
+        };
+        if input == source.trim() {
+            return destination.trim().to_string();
+        }
+    }
+    input.to_string()
+}
+
 impl ExecutionContext {
     pub(super) fn execute_keycheck(
         &mut self,
@@ -126,6 +144,18 @@ impl ExecutionContext {
             _ => input,
         };
 
+        self.variables
+            .set_user(&settings.output_var, result, settings.capture);
+        Ok(())
+    }
+
+    pub(super) fn execute_translate(
+        &mut self,
+        settings: &TranslateSettings,
+    ) -> crate::error::Result<()> {
+        let input = self.variables.resolve_input(&settings.input_var);
+        let mappings = self.variables.interpolate(&settings.mappings);
+        let result = translate_exact(&input, &mappings);
         self.variables
             .set_user(&settings.output_var, result, settings.capture);
         Ok(())
@@ -1269,4 +1299,18 @@ fn parse_primary(tokens: &[char], pos: &mut usize) -> f64 {
         .collect::<String>()
         .parse::<f64>()
         .unwrap_or(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::translate_exact;
+
+    #[test]
+    fn translate_uses_first_exact_mapping_and_preserves_unmatched_input() {
+        let table =
+            "\n# status names\n pending => queued \npending => should-not-win\nempty =>\ninvalid\n";
+        assert_eq!(translate_exact("pending", table), "queued");
+        assert_eq!(translate_exact("empty", table), "");
+        assert_eq!(translate_exact("unknown", table), "unknown");
+    }
 }

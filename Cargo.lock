@@ -2664,7 +2664,7 @@ dependencies = [
 
 [[package]]
 name = "ironbullet"
-version = "0.6.1"
+version = "0.6.2-rc.1"
 dependencies = [
  "aes-gcm",
  "arboard",
@@ -2699,6 +2699,7 @@ dependencies = [
  "rustls-pemfile",
  "rusty-tesseract",
  "scraper",
+ "semver",
  "serde",
  "serde_json",
  "sha1",

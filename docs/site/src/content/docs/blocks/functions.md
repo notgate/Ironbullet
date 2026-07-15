@@ -16,6 +16,13 @@ All entries use the selected block's settings panel. The focused configuration g
 - **Purpose:** Applies a selected string operation to an input value and writes the result.
 - **Configure:** Select the operation, provide the input values, and set the output variable or destination collection.
 
+## Translate
+
+- **Rust type:** `Translate`
+- **Availability:** Palette
+- **Purpose:** Maps an input value through a deterministic local lookup table.
+- **Configure:** Add one exact `source => destination` mapping per line; unmatched input is written unchanged.
+
 ## List Function
 
 - **Rust type:** `ListFunction`

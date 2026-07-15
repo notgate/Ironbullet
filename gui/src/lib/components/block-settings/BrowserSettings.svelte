@@ -171,6 +171,32 @@
 		</div>
 	</div>
 
+<!-- ===================== GET DOM ===================== -->
+{:else if block.settings.type === 'GetDom'}
+	<div class="space-y-1.5">
+		<div>
+			<label class={labelCls}>Selector (optional)</label>
+			<VariableInput value={block.settings.selector} placeholder="article, #content (empty = full page)" class={inputCls}
+				oninput={(e) => updateSettings('selector', (e.target as HTMLInputElement).value)} />
+			<p class="text-[9px] text-muted-foreground mt-0.5">Empty reads the current full page DOM. A selector reads one matching element.</p>
+		</div>
+		<label class="flex items-center gap-2 text-[11px] text-foreground">
+			<input type="checkbox" checked={block.settings.outer_html} onchange={() => updateSettings('outer_html', !block!.settings.outer_html)} class="skeu-checkbox" />
+			Include selected element
+		</label>
+		<div class="flex gap-2">
+			<div class="flex-1">
+				<label class={labelCls}>Output var</label>
+				<VariableInput value={block.settings.output_var} class={inputCls}
+					oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)} />
+			</div>
+			<label class="flex items-center gap-1 text-xs text-foreground pt-4">
+				<input type="checkbox" checked={block.settings.capture} onchange={() => updateSettings('capture', !block!.settings.capture)} class="skeu-checkbox" />
+				CAP
+			</label>
+		</div>
+	</div>
+
 <!-- ===================== SCREENSHOT ===================== -->
 {:else if block.settings.type === 'Screenshot'}
 	<div class="space-y-1.5">

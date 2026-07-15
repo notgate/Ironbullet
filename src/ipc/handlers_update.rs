@@ -199,8 +199,7 @@ pub fn download_update(
             }
         };
 
-        let update_path = current_exe.with_extension("update.exe");
-        let backup_path = current_exe.with_extension("old.exe");
+        let update_path = current_exe.with_extension("update.download");
 
         // Download to temp file with progress
         let mut file = match tokio::fs::File::create(&update_path).await {
@@ -282,126 +281,10 @@ pub fn download_update(
             serde_json::to_string(&progress).unwrap()
         ));
 
-        // If the download is a zip, extract the exe from it
-        let exe_to_install = if url.ends_with(".zip") {
-            let zip_data = match std::fs::read(&update_path) {
-                Ok(d) => d,
-                Err(e) => {
-                    let resp = IpcResponse::err(
-                        "update_download_result",
-                        format!("Cannot read zip: {}", e),
-                    );
-                    eval_js(format!(
-                        "window.__ipc_callback({})",
-                        serde_json::to_string(&resp).unwrap()
-                    ));
-                    return;
-                }
-            };
-
-            let cursor = std::io::Cursor::new(zip_data);
-            let mut archive = match zip::ZipArchive::new(cursor) {
-                Ok(a) => a,
-                Err(e) => {
-                    let resp = IpcResponse::err(
-                        "update_download_result",
-                        format!("Cannot open zip: {}", e),
-                    );
-                    eval_js(format!(
-                        "window.__ipc_callback({})",
-                        serde_json::to_string(&resp).unwrap()
-                    ));
-                    return;
-                }
-            };
-
-            // Find the main executable in the zip (the one matching our binary name, not sidecar)
-            let exe_name = current_exe
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("ironbullet.exe")
-                .to_string();
-
-            let exe_idx = (0..archive.len()).find(|&i| {
-                archive
-                    .by_index(i)
-                    .ok()
-                    .map(|f| {
-                        let name = f.name().to_lowercase();
-                        let fname = std::path::Path::new(&name)
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("")
-                            .to_string();
-                        fname == exe_name.to_lowercase()
-                            || (fname.ends_with(".exe") && !fname.contains("sidecar"))
-                    })
-                    .unwrap_or(false)
-            });
-
-            let idx = match exe_idx {
-                Some(i) => i,
-                None => {
-                    let resp = IpcResponse::err(
-                        "update_download_result",
-                        "No executable found in zip".into(),
-                    );
-                    eval_js(format!(
-                        "window.__ipc_callback({})",
-                        serde_json::to_string(&resp).unwrap()
-                    ));
-                    return;
-                }
-            };
-
-            let extracted_path = update_path.with_extension("extracted.exe");
-            {
-                let mut zip_file = archive.by_index(idx).unwrap();
-                let mut out = match std::fs::File::create(&extracted_path) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        let resp = IpcResponse::err(
-                            "update_download_result",
-                            format!("Cannot create extracted file: {}", e),
-                        );
-                        eval_js(format!(
-                            "window.__ipc_callback({})",
-                            serde_json::to_string(&resp).unwrap()
-                        ));
-                        return;
-                    }
-                };
-                use std::io::copy;
-                if let Err(e) = copy(&mut zip_file, &mut out) {
-                    let resp = IpcResponse::err(
-                        "update_download_result",
-                        format!("Extraction failed: {}", e),
-                    );
-                    eval_js(format!(
-                        "window.__ipc_callback({})",
-                        serde_json::to_string(&resp).unwrap()
-                    ));
-                    return;
-                }
-            }
-            let _ = std::fs::remove_file(&update_path);
-            extracted_path
-        } else {
-            update_path
-        };
-
-        // Rename current exe to .old, install new one
-        if backup_path.exists() {
-            let _ = std::fs::remove_file(&backup_path);
-        }
-
-        if let Err(e) = std::fs::rename(&current_exe, &backup_path) {
+        if !url.to_ascii_lowercase().ends_with(".zip") {
             let resp = IpcResponse::err(
                 "update_download_result",
-                format!(
-                    "Cannot rename current exe: {} — try running as administrator",
-                    e
-                ),
+                "Update asset must be a release bundle (.zip) containing Ironbullet and reqflow-sidecar".into(),
             );
             eval_js(format!(
                 "window.__ipc_callback({})",
@@ -410,12 +293,11 @@ pub fn download_update(
             return;
         }
 
-        if let Err(e) = std::fs::rename(&exe_to_install, &current_exe) {
-            // Restore backup
-            let _ = std::fs::rename(&backup_path, &current_exe);
+        let bundle_path = current_exe.with_extension("update.zip");
+        if let Err(e) = std::fs::rename(&update_path, &bundle_path) {
             let resp = IpcResponse::err(
                 "update_download_result",
-                format!("Cannot install update: {}", e),
+                format!("Cannot stage update bundle: {}", e),
             );
             eval_js(format!(
                 "window.__ipc_callback({})",
@@ -424,7 +306,20 @@ pub fn download_update(
             return;
         }
 
-        let resp = IpcResponse::ok("update_download_result", json!({ "success": true }));
+        if let Err(e) = stage_bundle_update(&current_exe, &bundle_path) {
+            let _ = std::fs::remove_file(&bundle_path);
+            let resp = IpcResponse::err("update_download_result", e);
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap()
+            ));
+            return;
+        }
+
+        let resp = IpcResponse::ok(
+            "update_download_result",
+            json!({ "success": true, "staged": true }),
+        );
         eval_js(format!(
             "window.__ipc_callback({})",
             serde_json::to_string(&resp).unwrap()
@@ -432,15 +327,121 @@ pub fn download_update(
     });
 }
 
-/// Simple semver comparison: returns true if `latest` > `current`
-fn version_is_newer(latest: &str, current: &str) -> bool {
-    let parse = |v: &str| -> (u32, u32, u32) {
-        let parts: Vec<u32> = v.split('.').filter_map(|s| s.parse().ok()).collect();
-        (
-            parts.first().copied().unwrap_or(0),
-            parts.get(1).copied().unwrap_or(0),
-            parts.get(2).copied().unwrap_or(0),
+fn stage_bundle_update(
+    current_exe: &std::path::Path,
+    bundle_path: &std::path::Path,
+) -> Result<(), String> {
+    let main_name = current_exe
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Cannot determine main executable name".to_string())?;
+    #[cfg(target_os = "windows")]
+    let sidecar_name = "reqflow-sidecar.exe";
+    #[cfg(not(target_os = "windows"))]
+    let sidecar_name = "reqflow-sidecar";
+
+    let file =
+        std::fs::File::open(bundle_path).map_err(|e| format!("Cannot read update bundle: {e}"))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Cannot open update bundle: {e}"))?;
+    let mut main_found = false;
+    let mut sidecar_found = false;
+    for index in 0..archive.len() {
+        let entry = archive
+            .by_index(index)
+            .map_err(|e| format!("Cannot inspect update bundle: {e}"))?;
+        let name = entry.name();
+        if name == main_name {
+            main_found = true;
+        }
+        if name == sidecar_name {
+            sidecar_found = true;
+        }
+    }
+    if !main_found || !sidecar_found {
+        return Err(format!(
+            "Update bundle must contain {main_name} and {sidecar_name} at its root"
+        ));
+    }
+
+    let install_dir = current_exe
+        .parent()
+        .ok_or_else(|| "Cannot determine install directory".to_string())?;
+    let pid = std::process::id();
+    spawn_update_helper(pid, current_exe, bundle_path, install_dir, sidecar_name)
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_update_helper(
+    pid: u32,
+    current_exe: &std::path::Path,
+    bundle_path: &std::path::Path,
+    install_dir: &std::path::Path,
+    _sidecar_name: &str,
+) -> Result<(), String> {
+    let helper = std::env::temp_dir().join(format!("ironbullet-update-{pid}.cmd"));
+    let escape = |path: &std::path::Path| path.display().to_string().replace('"', "\"\"");
+    let script = format!(
+        "@echo off\r\n:wait\r\ntasklist /FI \"PID eq {pid}\" /NH | findstr /C:\"{pid}\" >nul\r\nif not errorlevel 1 (timeout /t 1 /nobreak >nul & goto wait)\r\npowershell -NoProfile -ExecutionPolicy Bypass -Command \"Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force\"\r\nstart \"\" \"{}\"\r\ndel /q \"{}\"\r\ndel /q \"%~f0\"\r\n",
+        escape(bundle_path), escape(install_dir), escape(current_exe), escape(bundle_path)
+    );
+    std::fs::write(&helper, script).map_err(|e| format!("Cannot create update helper: {e}"))?;
+    std::process::Command::new("cmd")
+        .args(["/C", &helper.display().to_string()])
+        .spawn()
+        .map_err(|e| format!("Cannot start update helper: {e}"))?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn spawn_update_helper(
+    pid: u32,
+    current_exe: &std::path::Path,
+    bundle_path: &std::path::Path,
+    install_dir: &std::path::Path,
+    sidecar_name: &str,
+) -> Result<(), String> {
+    let helper = std::env::temp_dir().join(format!("ironbullet-update-{pid}.sh"));
+    let quote = |path: &std::path::Path| {
+        format!(
+            "'{}'",
+            path.display().to_string().replace('\'', "'\\\"'\\\"'")
         )
     };
-    parse(latest) > parse(current)
+    let script = format!(
+        "#!/bin/sh\nwhile kill -0 {pid} 2>/dev/null; do sleep 1; done\nunzip -oq {bundle} -d {dir}\nchmod +x {main} {sidecar}\n{main} &\nrm -f {bundle} \"$0\"\n",
+        bundle = quote(bundle_path),
+        dir = quote(install_dir),
+        main = quote(current_exe),
+        sidecar = quote(&install_dir.join(sidecar_name)),
+    );
+    std::fs::write(&helper, script).map_err(|e| format!("Cannot create update helper: {e}"))?;
+    std::process::Command::new("sh")
+        .arg(&helper)
+        .spawn()
+        .map_err(|e| format!("Cannot start update helper: {e}"))?;
+    Ok(())
+}
+
+/// Returns true only when a valid SemVer release is newer than the current build.
+fn version_is_newer(latest: &str, current: &str) -> bool {
+    let parse = |value: &str| semver::Version::parse(value.trim_start_matches('v'));
+    match (parse(latest), parse(current)) {
+        (Ok(latest), Ok(current)) => latest > current,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::version_is_newer;
+
+    #[test]
+    fn version_comparison_honors_prerelease_semver() {
+        assert!(version_is_newer("v0.6.2-rc.2", "0.6.2-rc.1"));
+        assert!(version_is_newer("0.6.2", "0.6.2-rc.2"));
+        assert!(!version_is_newer("0.6.2-rc.1", "0.6.2-rc.1"));
+        assert!(!version_is_newer("0.6.2-rc.1", "0.6.2"));
+        assert!(!version_is_newer("not-a-version", "0.6.2"));
+    }
 }

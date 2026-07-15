@@ -334,6 +334,7 @@ impl ExecutionContext {
             BlockSettings::Parse(settings) => self.execute_parse(settings),
             BlockSettings::KeyCheck(settings) => self.execute_keycheck(settings),
             BlockSettings::StringFunction(settings) => self.execute_string_function(settings),
+            BlockSettings::Translate(settings) => self.execute_translate(settings),
             BlockSettings::CryptoFunction(settings) => self.execute_crypto_function(settings),
             BlockSettings::Delay(settings) => self.execute_delay(settings).await,
             BlockSettings::SetVariable(settings) => {
@@ -412,6 +413,7 @@ impl ExecutionContext {
             BlockSettings::GetElementText(settings) => {
                 self.execute_get_element_text(settings).await
             }
+            BlockSettings::GetDom(settings) => self.execute_get_dom(settings).await,
             BlockSettings::Screenshot(settings) => self.execute_screenshot(settings).await,
             BlockSettings::ExecuteJs(settings) => self.execute_js(settings).await,
             // Networking (send via sidecar like HTTP)

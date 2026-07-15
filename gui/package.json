@@ -1,6 +1,6 @@
 {
   "name": "ironbullet-gui",
-  "version": "0.6.1",
+  "version": "0.6.2-rc.1",
   "private": true,
   "type": "module",
   "scripts": {

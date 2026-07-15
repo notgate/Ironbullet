@@ -11,6 +11,7 @@ export type BlockSettings =
 	| { type: 'Parse' } & ParseSettings
 	| { type: 'KeyCheck' } & KeyCheckSettings
 	| { type: 'StringFunction' } & StringFunctionSettings
+	| { type: 'Translate' } & TranslateSettings
 	| { type: 'ListFunction' } & ListFunctionSettings
 	| { type: 'CryptoFunction' } & CryptoFunctionSettings
 	| { type: 'ConversionFunction' } & ConversionFunctionSettings
@@ -42,6 +43,7 @@ export type BlockSettings =
 	| { type: 'TypeText' } & TypeTextSettings
 	| { type: 'WaitForElement' } & WaitForElementSettings
 	| { type: 'GetElementText' } & GetElementTextSettings
+	| { type: 'GetDom' } & GetDomSettings
 	| { type: 'Screenshot' } & ScreenshotSettings
 	| { type: 'ExecuteJs' } & ExecuteJsSettings
 	| { type: 'RandomUserAgent' } & RandomUserAgentSettings
@@ -212,6 +214,13 @@ export interface StringFunctionSettings {
 	capture: boolean;
 	param1: string;
 	param2: string;
+}
+
+export interface TranslateSettings {
+	input_var: string;
+	output_var: string;
+	capture: boolean;
+	mappings: string;
 }
 
 export interface ListFunctionSettings {
@@ -545,6 +554,13 @@ export interface WaitForElementSettings {
 export interface GetElementTextSettings {
 	selector: string;
 	attribute: string;
+	output_var: string;
+	capture: boolean;
+}
+
+export interface GetDomSettings {
+	selector: string;
+	outer_html: boolean;
 	output_var: string;
 	capture: boolean;
 }

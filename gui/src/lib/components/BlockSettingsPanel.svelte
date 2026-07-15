@@ -40,11 +40,11 @@
 	const HTTP_TYPES = ['HttpRequest'];
 	const PARSE_TYPES = ['ParseLR', 'ParseJSON', 'ParseRegex', 'ParseCSS', 'ParseXPath', 'ParseCookie', 'LambdaParser', 'Parse'];
 	const KEYCHECK_TYPES = ['KeyCheck'];
-	const FUNCTION_TYPES = ['StringFunction', 'ListFunction', 'CryptoFunction', 'ConversionFunction', 'ByteArray', 'Constants', 'Dictionary', 'FloatFunction', 'IntegerFunction', 'TimeFunction', 'GenerateGUID', 'PhoneCountry', 'FileSystem'];
+	const FUNCTION_TYPES = ['StringFunction', 'Translate', 'ListFunction', 'CryptoFunction', 'ConversionFunction', 'ByteArray', 'Constants', 'Dictionary', 'FloatFunction', 'IntegerFunction', 'TimeFunction', 'GenerateGUID', 'PhoneCountry', 'FileSystem'];
 	const CONTROL_TYPES = ['IfElse', 'Loop', 'Delay', 'Script', 'Log', 'SetVariable', 'ClearCookies'];
 	const NETWORK_TYPES = ['Webhook', 'WebSocket', 'TcpRequest', 'UdpRequest', 'FtpRequest', 'SshRequest', 'ImapRequest', 'SmtpRequest', 'PopRequest'];
 	const BYPASS_TYPES = ['CaptchaSolver', 'CloudflareBypass', 'LaravelCsrf'];
-	const BROWSER_TYPES = ['BrowserOpen', 'NavigateTo', 'ClickElement', 'TypeText', 'WaitForElement', 'GetElementText', 'Screenshot', 'ExecuteJs'];
+	const BROWSER_TYPES = ['BrowserOpen', 'NavigateTo', 'ClickElement', 'TypeText', 'WaitForElement', 'GetElementText', 'GetDom', 'Screenshot', 'ExecuteJs'];
 	const ADVANCED_TYPES = ['DateFunction', 'CaseSwitch', 'CookieContainer', 'RandomUserAgent', 'OcrCaptcha', 'RecaptchaInvisible', 'XacfSensor', 'RandomData', 'DataDomeSensor', 'Plugin', 'Group', 'AkamaiV3Sensor'];
 </script>
 

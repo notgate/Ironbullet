@@ -1,6 +1,6 @@
 [package]
 name = "ironbullet"
-version = "0.6.1"
+version = "0.6.2-rc.1"
 edition = "2021"
 description = "Pipelined request automation & script builder"
 
@@ -63,6 +63,7 @@ webpki-roots = "0.26"
 bcrypt = "0.16"
 aes-gcm = "0.10"
 zip = "2"
+semver = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 chrono-tz = "0.10"
 phonenumber = "0.3"

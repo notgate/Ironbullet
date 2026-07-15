@@ -111,6 +111,34 @@ impl Default for GetElementTextSettings {
     }
 }
 
+/// Reads the live page DOM, or the HTML for a CSS-selected element.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetDomSettings {
+    /// Empty means the full current page; otherwise this CSS selector is queried.
+    #[serde(default)]
+    pub selector: String,
+    /// Selected elements return outer HTML by default; false returns inner HTML.
+    #[serde(default = "default_outer_html")]
+    pub outer_html: bool,
+    pub output_var: String,
+    pub capture: bool,
+}
+
+fn default_outer_html() -> bool {
+    true
+}
+
+impl Default for GetDomSettings {
+    fn default() -> Self {
+        Self {
+            selector: String::new(),
+            outer_html: true,
+            output_var: "DOM".into(),
+            capture: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScreenshotSettings {
     pub full_page: bool,

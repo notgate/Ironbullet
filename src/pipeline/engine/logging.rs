@@ -70,6 +70,15 @@ impl ExecutionContext {
                     truncate_display(&val, 40)
                 )
             }
+            BlockSettings::Translate(s) => {
+                let val = self.variables.get(&s.output_var).unwrap_or_default();
+                format!(
+                    "{} → {} = {}",
+                    s.input_var,
+                    s.output_var,
+                    truncate_display(&val, 40)
+                )
+            }
             BlockSettings::CryptoFunction(s) => {
                 let val = self.variables.get(&s.output_var).unwrap_or_default();
                 format!(
@@ -155,6 +164,10 @@ impl ExecutionContext {
             BlockSettings::TypeText(s) => format!("typed into {}", s.selector),
             BlockSettings::WaitForElement(s) => format!("waited for {} [{}]", s.selector, s.state),
             BlockSettings::GetElementText(s) => {
+                let val = self.variables.get(&s.output_var).unwrap_or_default();
+                format!("{} = {}", s.output_var, truncate_display(&val, 60))
+            }
+            BlockSettings::GetDom(s) => {
                 let val = self.variables.get(&s.output_var).unwrap_or_default();
                 format!("{} = {}", s.output_var, truncate_display(&val, 60))
             }

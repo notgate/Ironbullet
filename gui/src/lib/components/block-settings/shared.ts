@@ -87,6 +87,10 @@ export const BLOCK_DOCS: Record<string, { summary: string; fields: Record<string
 			input_var: 'Variable containing the input string.',
 		}
 	},
+	Translate: {
+		summary: 'Maps an input value through a deterministic local lookup table.',
+		fields: { mappings: 'One source => destination exact mapping per line. Unmatched values pass through unchanged.' }
+	},
 	ListFunction: {
 		summary: 'Performs a list operation (join, sort, add, remove, etc.).',
 		fields: { input_var: 'Variable containing the list (prefix with @).' }
@@ -216,6 +220,10 @@ export const BLOCK_DOCS: Record<string, { summary: string; fields: Record<string
 	GetElementText: {
 		summary: 'Reads text content or an attribute from a page element.',
 		fields: { attribute: 'HTML attribute to read. Empty = inner text.' }
+	},
+	GetDom: {
+		summary: 'Reads the full current page DOM or a selected element HTML.',
+		fields: { selector: 'Optional CSS selector. Empty reads the complete page DOM.', outer_html: 'When selected, include the matching element itself rather than only its children.' }
 	},
 	Screenshot: {
 		summary: 'Takes a screenshot of the page or a specific element.',

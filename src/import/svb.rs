@@ -788,26 +788,21 @@ fn parse_svb_translate(
         i += 1;
     }
 
-    let mut block = Block::new(BlockType::Script);
+    let mut block = Block::new(BlockType::Translate);
     block.label = if label.is_empty() {
         "Translate".into()
     } else {
         label.to_string()
     };
     block.disabled = disabled;
-    if let BlockSettings::Script(ref mut s) = block.settings {
-        let table = entries
+    if let BlockSettings::Translate(ref mut s) = block.settings {
+        s.input_var = input_var;
+        s.output_var = output_var;
+        s.mappings = entries
             .iter()
-            .map(|(k, v)| format!("//   \"{}\" => \"{}\"", k, v))
+            .map(|(key, value)| format!("{} => {}", key, value))
             .collect::<Vec<_>>()
             .join("\n");
-        s.code = format!(
-            "// SVB Translate: lookup table on <{}> → {}\n// Entries ({}):\n{}",
-            input_var,
-            output_var,
-            entries.len(),
-            table
-        );
     }
 
     (Some(block), i)

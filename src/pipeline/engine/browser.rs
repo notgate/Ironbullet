@@ -471,6 +471,53 @@ impl ExecutionContext {
         Ok(())
     }
 
+    pub(super) async fn execute_get_dom(
+        &mut self,
+        settings: &GetDomSettings,
+    ) -> crate::error::Result<()> {
+        let page = self.page.0.as_ref().ok_or_else(|| {
+            crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into())
+        })?;
+        let selector = self.variables.interpolate(&settings.selector);
+        let value = if selector.trim().is_empty() {
+            page.content()
+                .await
+                .map_err(|e| crate::error::AppError::Pipeline(format!("Get DOM failed: {}", e)))?
+        } else {
+            let selector_json = serde_json::to_string(&selector).map_err(|e| {
+                crate::error::AppError::Pipeline(format!("Cannot encode DOM selector: {}", e))
+            })?;
+            let property = if settings.outer_html {
+                "outerHTML"
+            } else {
+                "innerHTML"
+            };
+            let expression = format!(
+                "(() => {{ const node = document.querySelector({}); return node ? node.{} : null; }})()",
+                selector_json, property
+            );
+            let result = page.evaluate_expression(&expression).await.map_err(|e| {
+                crate::error::AppError::Pipeline(format!(
+                    "Get DOM failed for '{}': {}",
+                    selector, e
+                ))
+            })?;
+            match result.value() {
+                Some(serde_json::Value::String(html)) => html.clone(),
+                Some(serde_json::Value::Null) | None => {
+                    return Err(crate::error::AppError::Pipeline(format!(
+                        "DOM element not found '{}'",
+                        selector
+                    )));
+                }
+                Some(other) => other.to_string(),
+            }
+        };
+        self.variables
+            .set_user(&settings.output_var, value, settings.capture);
+        Ok(())
+    }
+
     pub(super) async fn execute_screenshot(
         &mut self,
         settings: &ScreenshotSettings,
