@@ -639,12 +639,21 @@ impl JobManager {
                     return;
                 }
 
-                let has_scheme = proxy.starts_with("http://")
-                    || proxy.starts_with("https://")
-                    || proxy.starts_with("socks5://")
-                    || proxy.starts_with("socks4://");
-
-                let proxy_url = if has_scheme {
+                let proxy_url = if crate::sidecar::xray_pool::supports_uri(&proxy) {
+                    match crate::sidecar::xray_pool::resolve_proxy_uri(&proxy) {
+                        Ok(local_url) => local_url,
+                        Err(error) => {
+                            errors.fetch_add(1, Ordering::Relaxed);
+                            processed.fetch_add(1, Ordering::Relaxed);
+                            let mut captures = std::collections::HashMap::new();
+                            captures.insert("status".into(), "error".into());
+                            captures.insert("stage".into(), "xray_start".into());
+                            captures.insert("message".into(), format!("Encrypted proxy could not start: {error}"));
+                            let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None, ..Default::default() }).await;
+                            return;
+                        }
+                    }
+                } else if proxy.starts_with("http://") || proxy.starts_with("https://") || proxy.starts_with("socks5://") || proxy.starts_with("socks4://") {
                     proxy.clone()
                 } else {
                     let scheme = match check_type.to_lowercase().as_str() {
