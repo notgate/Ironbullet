@@ -30,6 +30,12 @@ jobs:
       - name: Build request-flow sidecar
         working-directory: sidecar
         run: go build -trimpath -ldflags='-s -w' -o reqflow-sidecar.exe .
+      - name: Install NASM for BoringSSL
+        shell: pwsh
+        run: |
+          choco install nasm --yes --no-progress
+          $nasm = (Get-Command nasm -ErrorAction Stop).Source
+          "CMAKE_ASM_NASM_COMPILER=$nasm" >> $env:GITHUB_ENV
       - name: Build Ironbullet
         run: cargo build --release
       - name: Assemble and verify release bundle
