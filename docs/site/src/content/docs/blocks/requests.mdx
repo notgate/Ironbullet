@@ -65,3 +65,9 @@ Mailbox and message-number fields apply only to the IMAP operations that consume
 POP message operations use `message_num`; a normal `STAT` does not.
 
 <BlockContractPlayground block="pop" />
+
+## WebSocket (currently unsupported)
+
+WebSocket is a serializable protocol block in the current model, but it is categorized under Utilities and its runtime transport is not implemented yet. Its card documents the exact failure contract so imported configurations are not mistaken for working WebSocket flows.
+
+<BlockContractPlayground block="websocket" />

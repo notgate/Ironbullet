@@ -33,17 +33,17 @@ const contracts: Record<BlockContractId, Contract> = {
   ftp: {
     title: 'FTP Request', type: 'FtpRequest',
     configuration: ['host, port, username, password, timeout_ms', 'command: LIST / RETR / STOR / DELE / MKD / RMD / CWD', 'remote_path; local_path for STOR; output_dir for RETR', 'output_var (default FTP_RESPONSE) and capture'],
-    behavior: ['Authenticates to the configured FTP service and runs the selected command.', 'LIST-style responses and command status are written to output_var; transfer paths control RETR/STOR file locations.'],
-    variables: ['{output_var} — protocol response/status', 'CAPTURE.{output_var} when capture is enabled'],
-    edgeCases: ['RETR and STOR require their relevant filesystem path fields.', 'Do not place untrusted paths into a transfer workflow without validating the intended local destination.', 'A login failure is not a successful empty listing.'],
-    trace: ['LIST /remote → FTP_RESPONSE', 'RETR /remote/file → output_dir + FTP_RESPONSE'],
+    behavior: ['Authenticates to the configured FTP service and records a control-channel transcript in output_var.', 'The current executor has no data-channel implementation: RETR/STOR do not transfer files.'],
+    variables: ['{output_var} — S:/C: control-channel transcript', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['remote_path is appended only for exact uppercase RETR, STOR, DELE, MKD, RMD, and CWD.', 'local_path and output_dir are defined settings but are currently unused.', 'Server command/auth outcomes are transcript/status results; connection failures are pipeline errors.'],
+    trace: ['LIST /remote → FTP_RESPONSE transcript', 'RETR /remote/file → command transcript only; no download occurs'],
   },
   ssh: {
     title: 'SSH Request', type: 'SshRequest',
     configuration: ['host, port, username, password, timeout_ms', 'command selector and ssh_cmd', 'output_var (default SSH_RESPONSE) and capture'],
-    behavior: ['Connects with the supplied credentials and returns the selected command or banner result in output_var.'],
-    variables: ['{output_var} — banner or command result', 'CAPTURE.{output_var} when capture is enabled'],
-    edgeCases: ['ssh_cmd matters for command execution; a banner operation does not run it.', 'Treat credential and command fields as sensitive pipeline inputs.', 'Timeout covers a server that accepts TCP but never completes SSH negotiation.'],
+    behavior: ['On non-Windows builds, connects with password authentication and returns the selected command or banner transcript in output_var.', 'Windows writes an empty output variable then returns an explicit Linux-only implementation error.'],
+    variables: ['{output_var} — banner or command transcript', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['Only exact command = exec runs ssh_cmd; blank ssh_cmd defaults to whoami. Other command values authenticate/banner only.', 'No host-key verification setting or implementation is exposed.', 'Connection, handshake, authentication, channel, or exec errors are pipeline failures.'],
     trace: ['banner / ssh_cmd → SSH_RESPONSE'],
   },
   imap: {
@@ -97,7 +97,7 @@ const contracts: Record<BlockContractId, Contract> = {
   'parse-json': {
     title: 'Parse JSON', type: 'ParseJSON',
     configuration: ['input_var, json_path, output_var, capture'],
-    behavior: ['Supports RFC 6901 JSON Pointer paths beginning with /.', 'Other paths use JSONPath-lite: dot keys, [n] indexing, and [] wildcard traversal.'],
+    behavior: ['Supports RFC 6901 JSON Pointer paths beginning with /.', 'Other paths use JSONPath-lite: dot keys, [n] indexing, wildcards, and simple filters.'],
     variables: ['{output_var} — stringified scalar/object/array result', 'CAPTURE.{output_var} when capture is enabled'],
     edgeCases: ['Whitespace-only input deliberately writes an empty output instead of failing.', 'Non-empty invalid JSON is a block error.', 'Missing path resolves to an empty output.'],
     trace: ['{"items":[{"id":42}]} + items[0].id → PARSED = "42"'],
@@ -137,10 +137,18 @@ const contracts: Record<BlockContractId, Contract> = {
   keycheck: {
     title: 'Key Check', type: 'KeyCheck',
     configuration: ['Ordered keychains; each has result, conditions, and mode AND / OR', 'Condition: source, comparison, value', 'Comparisons: contains, not contains, equal, not equal, regex, greater/less than, exists/not exists', 'stop_on_fail'],
-    behavior: ['Evaluates keychains in order and assigns the first matching result.', 'AND requires every condition; OR requires any condition. Empty chains are skipped.', 'stop_on_fail halts the current data entry only when the resulting status is Fail.'],
-    variables: ['Sets execution status: Success / Fail / Ban / Retry / Error / ToCheck', 'Reads data.*, input.*, or user variables; data.NAME falls back to user NAME for compatibility'],
-    edgeCases: ['Invalid regex evaluates false rather than crashing the check.', 'Numeric comparisons are false when either value cannot parse as a number.', 'No matching keychain leaves the current status unchanged.', 'An empty AND chain does not match everything.'],
+    behavior: ['Evaluates keychains in order and assigns the first matching result.', 'AND requires every condition; OR requires any condition. Empty chains are skipped.', 'stop_on_fail halts the current data entry only when this block assigns Fail.'],
+    variables: ['Sets execution status: None / Success / Fail / Ban / Retry / Error / Custom / ToCheck', 'Reads data.*, input.*, or user variables; data.NAME falls back to user NAME for compatibility'],
+    edgeCases: ['Invalid regex evaluates false rather than crashing the check.', 'Numeric comparisons are false when either value cannot parse as a number.', 'No matching keychain leaves the current status unchanged.', 'Ban, Retry, and Error stop the remaining block sequence; Success, Fail, Custom, and ToCheck do not automatically stop it.', 'An empty AND chain does not match everything.'],
     trace: ['data.SOURCE.STATUS == 200 → Success', 'data.SOURCE contains "rate limit" → Retry'],
+  },
+  websocket: {
+    title: 'WebSocket', type: 'WebSocket',
+    configuration: ['url, action (connect / send / receive / close), message', 'output_var (default WS_RESPONSE) and timeout_ms'],
+    behavior: ['The configuration is importable and serializable, but the current executor does not implement WebSocket transport.'],
+    variables: ['No output variable is produced by the current executor.'],
+    edgeCases: ['Every WebSocket execution fails before using its settings with: WebSocket requires tokio-tungstenite (not yet added).', 'Do not treat WS_RESPONSE as available until the transport dependency and executor are implemented.'],
+    trace: ['Any action → explicit unsupported-block pipeline error'],
   },
 };
 const c = contracts[block];
