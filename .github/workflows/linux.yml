@@ -37,7 +37,7 @@ jobs:
           - name: Fedora
             container: fedora:42
             install: >-
-              dnf install -y gcc gcc-c++ make pkgconf-pkg-config gtk3-devel
+              dnf install -y gcc gcc-c++ make perl pkgconf-pkg-config gtk3-devel
               webkit2gtk4.1-devel libayatana-appindicator-gtk3-devel
               xorg-x11-server-Xvfb zip python3 git curl && dnf clean all
           - name: Arch
