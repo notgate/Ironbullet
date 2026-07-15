@@ -1,0 +1,67 @@
+---
+title: Request and protocol blocks
+description: Interactive, engine-backed reference for request and protocol blocks.
+---
+
+import BlockContractPlayground from '../../../components/BlockContractPlayground.astro';
+
+{/* **Rust type:** `HttpRequest` */}
+{/* **Rust type:** `TcpRequest` */}
+{/* **Rust type:** `UdpRequest` */}
+{/* **Rust type:** `FtpRequest` */}
+{/* **Rust type:** `SshRequest` */}
+{/* **Rust type:** `ImapRequest` */}
+{/* **Rust type:** `SmtpRequest` */}
+{/* **Rust type:** `PopRequest` */}
+
+# Request and protocol blocks
+
+Every panel below is a local reference: it never contacts the URL or service shown in its trace. The **Variables** and **Edge cases** tabs reflect the current execution engine contract.
+
+## HTTP Request
+
+The HTTP block supports the selectable RustTLS, WreqTLS, and AzureTLS client paths, response namespaces, redirect handling, cookies, and request-body modes.
+
+<BlockContractPlayground block="http" />
+
+## TCP Request
+
+Use this for raw TCP application protocols where you own or are authorized to test the target service.
+
+<BlockContractPlayground block="tcp" />
+
+## UDP Request
+
+Use this for one datagram request/response exchange; it does not add a protocol-specific framing layer.
+
+<BlockContractPlayground block="udp" />
+
+## FTP Request
+
+FTP transfer actions are path-sensitive. Review the edge cases before enabling RETR or STOR in an automated pipeline.
+
+<BlockContractPlayground block="ftp" />
+
+## SSH Request
+
+The SSH block exposes banner/command behavior through the selected command and `ssh_cmd` fields.
+
+<BlockContractPlayground block="ssh" />
+
+## IMAP Request
+
+Mailbox and message-number fields apply only to the IMAP operations that consume them.
+
+<BlockContractPlayground block="imap" />
+
+## SMTP Request
+
+`VERIFY` and `SEND_EMAIL` have intentionally different side effects; the card makes that distinction explicit.
+
+<BlockContractPlayground block="smtp" />
+
+## POP Request
+
+POP message operations use `message_num`; a normal `STAT` does not.
+
+<BlockContractPlayground block="pop" />

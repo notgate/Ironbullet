@@ -20,7 +20,7 @@ def block_types() -> set[str]:
 
 def documented_types() -> set[str]:
     entries: set[str] = set()
-    for page in REFERENCE.glob("*.md"):
+    for page in [*REFERENCE.glob("*.md"), *REFERENCE.glob("*.mdx")]:
         entries.update(re.findall(r"\*\*Rust type:\*\* `([A-Za-z0-9]+)`", page.read_text(encoding="utf-8")))
     return entries
 

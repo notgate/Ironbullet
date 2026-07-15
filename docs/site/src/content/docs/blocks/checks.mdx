@@ -1,0 +1,18 @@
+---
+title: Checks
+description: Interactive, engine-backed reference for pipeline classification checks.
+---
+
+import BlockContractPlayground from '../../../components/BlockContractPlayground.astro';
+
+{/* **Rust type:** `KeyCheck` */}
+
+# Checks
+
+Checks classify the current execution result. The card below reflects condition resolution, ordered keychain matching, and the failure-stop behavior implemented by the engine.
+
+## Key Check
+
+The first matching non-empty keychain determines the resulting status.
+
+<BlockContractPlayground block="keycheck" />

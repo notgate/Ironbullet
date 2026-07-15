@@ -1,0 +1,67 @@
+---
+title: Parsing blocks
+description: Interactive, engine-backed reference for every parsing block.
+---
+
+import BlockContractPlayground from '../../../components/BlockContractPlayground.astro';
+
+{/* **Rust type:** `Parse` */}
+{/* **Rust type:** `ParseLR` */}
+{/* **Rust type:** `ParseRegex` */}
+{/* **Rust type:** `ParseJSON` */}
+{/* **Rust type:** `ParseCSS` */}
+{/* **Rust type:** `ParseXPath` */}
+{/* **Rust type:** `ParseCookie` */}
+{/* **Rust type:** `LambdaParser` */}
+
+# Parsing blocks
+
+Parser output is a named **user variable**. It may also be captured when `capture` is enabled. The cards below show the exact output rules and failure/empty-result behavior of the execution engine.
+
+## Parse
+
+The palette-facing unified parser routes to one of the legacy parser engines based on `parse_mode`.
+
+<BlockContractPlayground block="parse" />
+
+## Parse LR
+
+Compatibility parser retained for imported configurations.
+
+<BlockContractPlayground block="parse-lr" />
+
+## Parse Regex
+
+Compatibility parser retained for imported configurations.
+
+<BlockContractPlayground block="parse-regex" />
+
+## Parse JSON
+
+Compatibility parser retained for imported configurations.
+
+<BlockContractPlayground block="parse-json" />
+
+## Parse CSS
+
+Compatibility parser retained for imported configurations.
+
+<BlockContractPlayground block="parse-css" />
+
+## Parse XPath
+
+Compatibility parser retained for imported configurations.
+
+<BlockContractPlayground block="parse-xpath" />
+
+## Parse Cookie
+
+Compatibility parser retained for imported configurations. Its input default differs from the other parser variants.
+
+<BlockContractPlayground block="parse-cookie" />
+
+## Lambda Parser
+
+Compatibility parser retained for imported configurations.
+
+<BlockContractPlayground block="lambda" />

@@ -1,0 +1,188 @@
+---
+type BlockContractId = string;
+
+interface Props { block: BlockContractId; }
+interface Contract { title: string; type: string; configuration: string[]; behavior: string[]; variables: string[]; edgeCases: string[]; trace: string[]; }
+const { block } = Astro.props;
+
+const contracts: Record<BlockContractId, Contract> = {
+  http: {
+    title: 'HTTP Request', type: 'HttpRequest',
+    configuration: ['method, url, headers, body/body_type, content_type', 'follow_redirects + max_redirects; timeout_ms; HTTP version', 'response_var (default SOURCE); custom_cookies; basic_auth', 'ssl_verify / proxy_insecure; TLS client and its profile or overrides'],
+    behavior: ['Sends through RustTLS, WreqTLS, or AzureTLS and stores the completed response under response_var.', 'Redirect behavior is controlled by follow_redirects / auto_redirect; response URL is the final URL.', 'The transport-specific controls are meaningful only for their selected TLS client.'],
+    variables: ['data.{response_var} — response body', 'data.{response_var}.STATUS / .URL', 'data.{response_var}.HEADERS and .COOKIES, plus indexed keys', 'Compatibility aliases: data.RESPONSECODE, data.ADDRESS, data.LASTRESPONSE, data.LASTHEADERS'],
+    edgeCases: ['A failed request clears prior response state before downstream checks; inspect data.{response_var}.ERROR.', 'proxy_insecure disables target verification too for RustTLS/WreqTLS because TLS config is client-scoped; AzureTLS handles proxy TLS separately.', 'Multipart is rejected when its required field contract is missing; it is not silently sent as malformed raw data.'],
+    trace: ['GET https://api.example.test/profile', '200 → data.SOURCE = {…}; data.SOURCE.STATUS = 200', 'Failure → data.SOURCE.ERROR is set and stale response variables are not retained.'],
+  },
+  tcp: {
+    title: 'TCP Request', type: 'TcpRequest',
+    configuration: ['host, port, data, timeout_ms', 'use_tls and ssl_verify', 'output_var (default TCP_RESPONSE) and capture'],
+    behavior: ['Opens a TCP connection, writes data, and stores the received protocol text in output_var.', 'TLS is optional; certificate verification follows ssl_verify.'],
+    variables: ['{output_var} — received response text', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['Use an explicit timeout: a service may accept a socket but never send a banner.', 'TLS settings are only applied when use_tls is enabled.', 'A connection failure is a block error; it does not create a fabricated response.'],
+    trace: ['host:port + payload → socket response', 'TCP_RESPONSE = "…"'],
+  },
+  udp: {
+    title: 'UDP Request', type: 'UdpRequest',
+    configuration: ['host, port, datagram data, timeout_ms', 'output_var (default UDP_RESPONSE) and capture'],
+    behavior: ['Sends one UDP datagram and stores the received datagram text in output_var.'],
+    variables: ['{output_var} — received datagram text', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['UDP is connectionless: no response before timeout is not evidence that the destination is unreachable.', 'Use the correct service port and payload framing; the block does not invent protocol framing.'],
+    trace: ['datagram → UDP response', 'UDP_RESPONSE = "…"'],
+  },
+  ftp: {
+    title: 'FTP Request', type: 'FtpRequest',
+    configuration: ['host, port, username, password, timeout_ms', 'command: LIST / RETR / STOR / DELE / MKD / RMD / CWD', 'remote_path; local_path for STOR; output_dir for RETR', 'output_var (default FTP_RESPONSE) and capture'],
+    behavior: ['Authenticates to the configured FTP service and runs the selected command.', 'LIST-style responses and command status are written to output_var; transfer paths control RETR/STOR file locations.'],
+    variables: ['{output_var} — protocol response/status', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['RETR and STOR require their relevant filesystem path fields.', 'Do not place untrusted paths into a transfer workflow without validating the intended local destination.', 'A login failure is not a successful empty listing.'],
+    trace: ['LIST /remote → FTP_RESPONSE', 'RETR /remote/file → output_dir + FTP_RESPONSE'],
+  },
+  ssh: {
+    title: 'SSH Request', type: 'SshRequest',
+    configuration: ['host, port, username, password, timeout_ms', 'command selector and ssh_cmd', 'output_var (default SSH_RESPONSE) and capture'],
+    behavior: ['Connects with the supplied credentials and returns the selected command or banner result in output_var.'],
+    variables: ['{output_var} — banner or command result', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['ssh_cmd matters for command execution; a banner operation does not run it.', 'Treat credential and command fields as sensitive pipeline inputs.', 'Timeout covers a server that accepts TCP but never completes SSH negotiation.'],
+    trace: ['banner / ssh_cmd → SSH_RESPONSE'],
+  },
+  imap: {
+    title: 'IMAP Request', type: 'ImapRequest',
+    configuration: ['host, port, username, password; use_tls; ssl_verify', 'command: LOGIN / SELECT / FETCH / SEARCH', 'mailbox (default INBOX), message_num, timeout_ms', 'output_var (default IMAP_RESPONSE) and capture'],
+    behavior: ['Authenticates and executes the selected IMAP operation against the selected mailbox/message.'],
+    variables: ['{output_var} — IMAP protocol response or fetched result', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['Mailbox and message_num apply only to commands that use them.', 'Default port 993 assumes TLS; changing use_tls changes the transport contract.', 'Certificate failures follow ssl_verify.'],
+    trace: ['SELECT INBOX / FETCH 1 → IMAP_RESPONSE'],
+  },
+  smtp: {
+    title: 'SMTP Request', type: 'SmtpRequest',
+    configuration: ['host, port, username, password; use_tls; ssl_verify', 'command and action: VERIFY or SEND_EMAIL', 'from (defaults to username when empty), comma-separated to, subject, body_template', 'output_var (default SMTP_RESPONSE) and capture'],
+    behavior: ['VERIFY performs the login check. SEND_EMAIL uses the sender, recipients, subject, and body fields.'],
+    variables: ['{output_var} — SMTP response/status', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['VERIFY does not send email.', 'SEND_EMAIL requires a valid recipient contract; do not confuse a successful transport connection with delivery.', 'An empty from field resolves to the configured username.'],
+    trace: ['VERIFY → SMTP_RESPONSE', 'SEND_EMAIL → SMTP_RESPONSE'],
+  },
+  pop: {
+    title: 'POP Request', type: 'PopRequest',
+    configuration: ['host, port, username, password; use_tls; ssl_verify', 'command (default STAT) and message_num for RETR / DELE', 'output_var (default POP_RESPONSE) and capture'],
+    behavior: ['Authenticates and executes the configured POP action, writing its result to output_var.'],
+    variables: ['{output_var} — POP protocol response or message result', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['message_num only matters for RETR/DELE.', 'Default port 995 assumes TLS.', 'A nonnumeric or nonexistent message number is a protocol-side failure, not a parsed empty success.'],
+    trace: ['STAT / RETR 1 → POP_RESPONSE'],
+  },
+  parse: {
+    title: 'Parse', type: 'Parse',
+    configuration: ['parse_mode: LR / Regex / Json / Css / XPath / Cookie / Lambda', 'Common: input_var (default data.SOURCE), output_var (default PARSED), capture', 'Mode-specific fields: delimiters, regex output format, JSON path, selector/attribute/index, XPath, cookie name, or lambda expression'],
+    behavior: ['The unified block dispatches to the same engine paths as the legacy parser variants.', 'Only the active mode’s fields determine the extraction.'],
+    variables: ['{output_var} — extracted value', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['Legacy ParseLR / ParseRegex / ParseJSON / ParseCSS / ParseXPath / ParseCookie / LambdaParser remain import-compatible.', 'Use data.SOURCE for response namespace input; parsed output is a user variable, not automatically data.{output_var}.'],
+    trace: ['input_var + selected mode → PARSED'],
+  },
+  'parse-lr': {
+    title: 'Parse LR', type: 'ParseLR',
+    configuration: ['input_var, left, right, output_var, capture', 'recursive and case_insensitive'],
+    behavior: ['Non-recursive mode returns the first text between delimiters.', 'Recursive mode collects successive matches and joins them with ", ".'],
+    variables: ['{output_var} — first extraction or joined recursive results', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['Both delimiters must be non-empty; the engine rejects empty delimiters to prevent non-advancing recursive parsing.', 'No left/right match writes an empty string in non-recursive mode.', 'case_insensitive affects literal delimiter search.'],
+    trace: ['"a[one] b[two]" + recursive → "one, two"'],
+  },
+  'parse-regex': {
+    title: 'Parse Regex', type: 'ParseRegex',
+    configuration: ['input_var, pattern, output_format (default $1)', 'output_var, capture, multi_line'],
+    behavior: ['Builds a Rust regex and uses the first capture match.', 'output_format expands capture references such as $1 and $10.'],
+    variables: ['{output_var} — expanded capture result when matched', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['Invalid regex syntax is a block error.', 'No match leaves the existing output variable untouched; configure downstream checks accordingly.', 'multi_line changes ^ and $ behavior.'],
+    trace: ['pattern /id=(\\d+)/ + $1 → PARSED = "42"'],
+  },
+  'parse-json': {
+    title: 'Parse JSON', type: 'ParseJSON',
+    configuration: ['input_var, json_path, output_var, capture'],
+    behavior: ['Supports RFC 6901 JSON Pointer paths beginning with /.', 'Other paths use JSONPath-lite: dot keys, [n] indexing, and [] wildcard traversal.'],
+    variables: ['{output_var} — stringified scalar/object/array result', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['Whitespace-only input deliberately writes an empty output instead of failing.', 'Non-empty invalid JSON is a block error.', 'Missing path resolves to an empty output.'],
+    trace: ['{"items":[{"id":42}]} + items[0].id → PARSED = "42"'],
+  },
+  'parse-css': {
+    title: 'Parse CSS', type: 'ParseCSS',
+    configuration: ['input_var, selector, attribute, index, output_var, capture', 'attribute supports text/innerText, innerHTML/html, outerHTML, or a named HTML attribute'],
+    behavior: ['Parses HTML and selects elements with a CSS selector.', 'index >= 0 selects one element; index = -1 extracts all matches joined with ", ".'],
+    variables: ['{output_var} — trimmed selected text, HTML, or attribute', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['Invalid CSS selector is a block error.', 'No match or an index outside the match set writes an empty output.', 'Any other negative index writes empty; only -1 means all matches.'],
+    trace: ['.price + innerText + index -1 → "10, 20"'],
+  },
+  'parse-xpath': {
+    title: 'Parse XPath', type: 'ParseXPath',
+    configuration: ['input_var, xpath, output_var, capture'],
+    behavior: ['Evaluates XPath as string, number, boolean, or node set.', 'Node-set values are joined with ", ".'],
+    variables: ['{output_var} — trimmed XPath value', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['Invalid XPath is a block error.', 'If source is not valid XML, the engine retries by wrapping it in a root element.', 'Invalid/unmatched evaluations resolve to an empty output where parsing can continue.'],
+    trace: ['//price/text() → PARSED'],
+  },
+  'parse-cookie': {
+    title: 'Parse Cookie', type: 'ParseCookie',
+    configuration: ['input_var (default data.COOKIES), cookie_name, output_var, capture'],
+    behavior: ['Resolves the cookie collection input and extracts the named cookie value.'],
+    variables: ['{output_var} — selected cookie value', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['The default input is the HTTP cookie namespace, not data.SOURCE.', 'A missing named cookie writes an empty output.', 'Use the exact cookie name; do not parse Set-Cookie syntax as an arbitrary response body.'],
+    trace: ['data.COOKIES + session → PARSED = "…"'],
+  },
+  lambda: {
+    title: 'Lambda Parser', type: 'LambdaParser',
+    configuration: ['input_var, lambda expression, output_var, capture'],
+    behavior: ['Applies the retained compatibility lambda-parser behavior to the resolved input.'],
+    variables: ['{output_var} — lambda result', 'CAPTURE.{output_var} when capture is enabled'],
+    edgeCases: ['This is retained for imported configurations; use the unified Parse block for new parser authoring where possible.', 'Treat expression syntax and result formatting as compatibility-sensitive.'],
+    trace: ['input + lambda_expression → PARSED'],
+  },
+  keycheck: {
+    title: 'Key Check', type: 'KeyCheck',
+    configuration: ['Ordered keychains; each has result, conditions, and mode AND / OR', 'Condition: source, comparison, value', 'Comparisons: contains, not contains, equal, not equal, regex, greater/less than, exists/not exists', 'stop_on_fail'],
+    behavior: ['Evaluates keychains in order and assigns the first matching result.', 'AND requires every condition; OR requires any condition. Empty chains are skipped.', 'stop_on_fail halts the current data entry only when the resulting status is Fail.'],
+    variables: ['Sets execution status: Success / Fail / Ban / Retry / Error / ToCheck', 'Reads data.*, input.*, or user variables; data.NAME falls back to user NAME for compatibility'],
+    edgeCases: ['Invalid regex evaluates false rather than crashing the check.', 'Numeric comparisons are false when either value cannot parse as a number.', 'No matching keychain leaves the current status unchanged.', 'An empty AND chain does not match everything.'],
+    trace: ['data.SOURCE.STATUS == 200 → Success', 'data.SOURCE contains "rate limit" → Retry'],
+  },
+};
+const c = contracts[block];
+---
+
+<section class="contract-playground" data-contract-playground aria-label={`${c.title} interactive reference`}>
+  <header>
+    <div><p class="eyebrow">Interactive block contract</p><h3>{c.title}</h3><code>{c.type}</code></div>
+    <span>Local reference · no request sent</span>
+  </header>
+  <div class="tabs" role="tablist" aria-label={`${c.title} reference tabs`}>
+    <button type="button" role="tab" aria-selected="true" data-tab="configuration">Configuration</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="behavior">Behavior</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="variables">Variables</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="edges">Edge cases</button>
+  </div>
+  <div class="panel" data-panel="configuration"><ul>{c.configuration.map((line) => <li>{line}</li>)}</ul></div>
+  <div class="panel" data-panel="behavior" hidden><ul>{c.behavior.map((line) => <li>{line}</li>)}</ul><pre>{c.trace.join('\n')}</pre></div>
+  <div class="panel" data-panel="variables" hidden><ul>{c.variables.map((line) => <li><code>{line}</code></li>)}</ul></div>
+  <div class="panel" data-panel="edges" hidden><ul>{c.edgeCases.map((line) => <li>{line}</li>)}</ul></div>
+</section>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-contract-playground]').forEach((root) => {
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('[data-tab]')];
+    const panels = [...root.querySelectorAll<HTMLElement>('[data-panel]')];
+    for (const button of buttons) button.addEventListener('click', () => {
+      const active = button.dataset.tab;
+      buttons.forEach((item) => item.setAttribute('aria-selected', String(item === button)));
+      panels.forEach((panel) => { panel.hidden = panel.dataset.panel !== active; });
+    });
+  });
+</script>
+
+<style>
+  .contract-playground { margin: 1.1rem 0 1.8rem; border: 1px solid var(--sl-color-gray-5); border-radius: .65rem; overflow: hidden; background: var(--sl-color-black); }
+  header { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: .9rem 1rem; border-bottom: 1px solid var(--sl-color-gray-5); }
+  h3 { margin: 0; font-size: 1rem; } header code { display: inline-block; margin-top: .25rem; font-size: .72rem; } .eyebrow { margin: 0 0 .2rem; color: var(--sl-color-gray-3); font-size: .67rem; letter-spacing: .08em; text-transform: uppercase; }
+  header > span { white-space: nowrap; border: 1px solid var(--sl-color-gray-4); border-radius: 999px; padding: .18rem .45rem; color: var(--sl-color-gray-2); font-size: .68rem; }
+  .tabs { display: flex; gap: 0; overflow-x: auto; border-bottom: 1px solid var(--sl-color-gray-5); }
+  .tabs button { border: 0; border-right: 1px solid var(--sl-color-gray-5); background: transparent; color: var(--sl-color-gray-2); padding: .55rem .7rem; font: inherit; font-size: .75rem; cursor: pointer; white-space: nowrap; }
+  .tabs button[aria-selected="true"] { background: var(--sl-color-gray-6); color: var(--sl-color-white); box-shadow: inset 0 -2px var(--sl-color-accent); }
+  .panel { padding: .75rem 1rem .85rem; font-size: .82rem; } ul { margin: 0; padding-left: 1.1rem; } li + li { margin-top: .35rem; } pre { margin: .75rem 0 0; padding: .65rem; overflow: auto; border: 1px solid var(--sl-color-gray-5); border-radius: .35rem; background: var(--sl-color-gray-6); color: var(--sl-color-gray-1); font-size: .72rem; line-height: 1.45; }
+  @media (max-width: 600px) { header { flex-direction: column; } }
+</style>
