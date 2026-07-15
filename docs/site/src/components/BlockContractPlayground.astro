@@ -165,10 +165,12 @@ const c = contracts[block];
     <button type="button" role="tab" aria-selected="false" data-tab="variables">Variables</button>
     <button type="button" role="tab" aria-selected="false" data-tab="edges">Edge cases</button>
   </div>
-  <div class="panel" data-panel="configuration"><ul>{c.configuration.map((line) => <li>{line}</li>)}</ul></div>
-  <div class="panel" data-panel="behavior" hidden><ul>{c.behavior.map((line) => <li>{line}</li>)}</ul><pre>{c.trace.join('\n')}</pre></div>
-  <div class="panel" data-panel="variables" hidden><ul>{c.variables.map((line) => <li><code>{line}</code></li>)}</ul></div>
-  <div class="panel" data-panel="edges" hidden><ul>{c.edgeCases.map((line) => <li>{line}</li>)}</ul></div>
+  <div class="panel-stack">
+    <div class="panel" data-panel="configuration"><ul>{c.configuration.map((line) => <li>{line}</li>)}</ul></div>
+    <div class="panel" data-panel="behavior" hidden aria-hidden="true"><ul>{c.behavior.map((line) => <li>{line}</li>)}</ul><pre>{c.trace.join('\n')}</pre></div>
+    <div class="panel" data-panel="variables" hidden aria-hidden="true"><ul>{c.variables.map((line) => <li><code>{line}</code></li>)}</ul></div>
+    <div class="panel" data-panel="edges" hidden aria-hidden="true"><ul>{c.edgeCases.map((line) => <li>{line}</li>)}</ul></div>
+  </div>
 </section>
 
 <script>
@@ -178,7 +180,11 @@ const c = contracts[block];
     for (const button of buttons) button.addEventListener('click', () => {
       const active = button.dataset.tab;
       buttons.forEach((item) => item.setAttribute('aria-selected', String(item === button)));
-      panels.forEach((panel) => { panel.hidden = panel.dataset.panel !== active; });
+      panels.forEach((panel) => {
+        const isHidden = panel.dataset.panel !== active;
+        panel.hidden = isHidden;
+        panel.setAttribute('aria-hidden', String(isHidden));
+      });
     });
   });
 </script>
@@ -191,6 +197,9 @@ const c = contracts[block];
   .tabs { display: flex; gap: 0; overflow-x: auto; border-bottom: 1px solid var(--sl-color-gray-5); }
   .tabs button { border: 0; border-right: 1px solid var(--sl-color-gray-5); background: transparent; color: var(--sl-color-gray-2); padding: .55rem .7rem; font: inherit; font-size: .75rem; cursor: pointer; white-space: nowrap; }
   .tabs button[aria-selected="true"] { background: var(--sl-color-gray-6); color: var(--sl-color-white); box-shadow: inset 0 -2px var(--sl-color-accent); }
-  .panel { padding: .75rem 1rem .85rem; font-size: .82rem; } ul { margin: 0; padding-left: 1.1rem; } li + li { margin-top: .35rem; } pre { margin: .75rem 0 0; padding: .65rem; overflow: auto; border: 1px solid var(--sl-color-gray-5); border-radius: .35rem; background: var(--sl-color-gray-6); color: var(--sl-color-gray-1); font-size: .72rem; line-height: 1.45; }
+  .panel-stack { display: grid; }
+  .panel { grid-area: 1 / 1; padding: 1rem 1.1rem 1.05rem; font-size: .82rem; }
+  .panel[hidden] { display: block; visibility: hidden; pointer-events: none; }
+  ul { margin: 0; padding-left: 1.1rem; } li + li { margin-top: .35rem; } pre { margin: .85rem 0 0; padding: .75rem; overflow: auto; border: 1px solid var(--sl-color-gray-5); border-radius: .35rem; background: var(--sl-color-gray-6); color: var(--sl-color-gray-1); font-size: .72rem; line-height: 1.45; }
   @media (max-width: 600px) { header { flex-direction: column; } }
 </style>

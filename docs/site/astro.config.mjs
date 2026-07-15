@@ -8,6 +8,11 @@ export default defineConfig({
     starlight({
       title: 'Ironbullet',
       description: 'Reference documentation for the Ironbullet pipeline desktop application.',
+      logo: {
+        src: './src/assets/ironbullet-logo.svg',
+        alt: 'Ironbullet',
+        replacesTitle: true,
+      },
       customCss: ['./src/styles/ironbullet.css'],
       sidebar: [
         { label: 'Get started', items: [
