@@ -5,6 +5,8 @@ description: Reference entries for browser automation.
 
 # Browser automation
 
+import BlockPlayground from '../../../components/BlockPlayground.astro';
+
 These blocks operate on the browser context created by Browser Open. Validate selectors and navigation in Debug mode before using a full job.
 
 All entries use the selected block's settings panel. The focused configuration guidance below describes the fields to review before using the block.
@@ -57,6 +59,8 @@ All entries use the selected block's settings panel. The focused configuration g
 - **Availability:** Palette
 - **Purpose:** Stores the complete active page DOM, or the inner/outer HTML of the first matching CSS selector.
 - **Configure:** Leave Selector empty for the full page; set **Include selected element** for outer HTML; use a named output variable.
+
+<BlockPlayground kind="getdom" />
 
 ## Screenshot
 

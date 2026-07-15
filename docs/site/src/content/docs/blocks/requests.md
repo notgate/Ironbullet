@@ -5,6 +5,8 @@ description: Reference entries for request and protocol blocks.
 
 # Request and protocol blocks
 
+import BlockPlayground from '../../../components/BlockPlayground.astro';
+
 Build HTTP and protocol-level interactions. Use only with endpoints and systems you are authorized to assess.
 
 All entries use the selected block's settings panel. The focused configuration guidance below describes the fields to review before using the block.
@@ -15,6 +17,8 @@ All entries use the selected block's settings panel. The focused configuration g
 - **Availability:** Palette
 - **Purpose:** Creates an HTTP request, applies configured headers, cookies, body, redirect policy, and stores the named response.
 - **Configure:** Configure the endpoint, transport-specific connection fields, request payload, timeout, and named response/output fields. For HTTP, review redirect, TLS, cookie, and response-variable settings.
+
+<BlockPlayground kind="http" />
 
 ## TCP Request
 

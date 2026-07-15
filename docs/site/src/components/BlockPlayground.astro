@@ -1,0 +1,202 @@
+---
+export type PlaygroundKind = 'http' | 'translate' | 'getdom';
+
+interface Props {
+  kind: PlaygroundKind;
+}
+
+const { kind } = Astro.props;
+const titles: Record<PlaygroundKind, string> = {
+  http: 'HTTP Request block',
+  translate: 'Translate block',
+  getdom: 'Get DOM block',
+};
+---
+
+<section class="block-playground" data-block-playground={kind} aria-label={`${titles[kind]} interactive example`}>
+  <div class="playground-header">
+    <div>
+      <p class="eyebrow">Interactive configuration preview</p>
+      <h3>{titles[kind]}</h3>
+    </div>
+    <span class="local-badge">Local example · no request sent</span>
+  </div>
+
+  {kind === 'http' && <>
+    <div class="playground-grid">
+      <label>Method
+        <select data-field="method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
+      </label>
+      <label class="span-2">URL
+        <input data-field="url" value="https://api.example.test/v1/profile" spellcheck="false" />
+      </label>
+      <label>TLS client
+        <select data-field="tls">
+          <option value="RustTLS">RustTLS — reqwest + rustls</option>
+          <option value="WreqTLS" selected>WreqTLS — wreq + BoringSSL</option>
+          <option value="AzureTLS">AzureTLS — Go sidecar</option>
+        </select>
+      </label>
+      <label data-tls-wreq>WreqTLS profile
+        <select data-field="profile"><option>Chrome134</option><option>Firefox136</option><option>Safari18</option><option>Edge134</option></select>
+      </label>
+      <label data-tls-azure hidden>AzureTLS browser profile
+        <select data-field="browser-profile"><option value="">Inherit pipeline setting</option><option>chrome</option><option>firefox</option><option>safari</option><option>edge</option></select>
+      </label>
+      <label data-tls-azure hidden class="span-2">AzureTLS overrides <span class="optional">optional: JA3 · HTTP/2 fingerprint · cipher suites</span>
+        <input data-field="azure-overrides" placeholder="Leave empty to inherit pipeline defaults" spellcheck="false" />
+      </label>
+      <label>Response variable
+        <input data-field="response-var" value="SOURCE" spellcheck="false" />
+      </label>
+      <label class="span-2">Headers
+        <textarea data-field="headers" rows="3" spellcheck="false">Accept: application/json
+Authorization: Bearer &lt;TOKEN&gt;</textarea>
+      </label>
+    </div>
+    <p class="transport-note" data-transport-note></p>
+    <button type="button" class="run-example" data-run-example>Refresh preview</button>
+    <div class="result-grid">
+      <div><p class="panel-title">Block settings</p><pre data-settings></pre></div>
+      <div><p class="panel-title">Example response</p><pre data-response></pre></div>
+      <div class="span-2"><p class="panel-title">Variables made available</p><pre data-vars></pre></div>
+    </div>
+  </>}
+
+  {kind === 'translate' && <>
+    <div class="playground-grid">
+      <label>Input variable
+        <input data-field="input-var" value="STATUS" spellcheck="false" />
+      </label>
+      <label>Current value
+        <input data-field="input-value" value="pending" spellcheck="false" />
+      </label>
+      <label>Output variable
+        <input data-field="output-var" value="STATE" spellcheck="false" />
+      </label>
+      <label class="span-3">Mappings — one exact <code>source =&gt; destination</code> pair per line
+        <textarea data-field="mappings" rows="5" spellcheck="false">pending =&gt; queued
+active =&gt; processing
+complete =&gt; done
+failed =&gt; error</textarea>
+      </label>
+    </div>
+    <button type="button" class="run-example" data-run-example>Evaluate mapping</button>
+    <div class="result-grid">
+      <div><p class="panel-title">Block settings</p><pre data-settings></pre></div>
+      <div><p class="panel-title">Result</p><pre data-response></pre></div>
+      <div class="span-2"><p class="panel-title">Variables made available</p><pre data-vars></pre></div>
+    </div>
+  </>}
+
+  {kind === 'getdom' && <>
+    <div class="playground-grid">
+      <label class="span-2">CSS selector <span class="optional">optional</span>
+        <input data-field="selector" value="article .price" spellcheck="false" />
+      </label>
+      <label>Output variable
+        <input data-field="output-var" value="PRICE_HTML" spellcheck="false" />
+      </label>
+      <label class="check-row span-3"><input data-field="outer-html" type="checkbox" checked /> Include selected element (<code>outerHTML</code>)</label>
+    </div>
+    <button type="button" class="run-example" data-run-example>Read documented DOM</button>
+    <div class="result-grid">
+      <div><p class="panel-title">Block settings</p><pre data-settings></pre></div>
+      <div><p class="panel-title">Example DOM result</p><pre data-response></pre></div>
+      <div class="span-2"><p class="panel-title">Variables made available</p><pre data-vars></pre></div>
+    </div>
+  </>}
+</section>
+
+<script>
+  const transportNotes: Record<string, string> = {
+    RustTLS: 'RustTLS uses reqwest + rustls for standard HTTPS. It is the default and has no browser-emulation profile.',
+    WreqTLS: 'WreqTLS uses wreq + BoringSSL. The selected emulation profile controls the demonstrated TLS and HTTP/2 client shape.',
+    AzureTLS: 'AzureTLS delegates the request to the bundled Go sidecar. It accepts browser profiles plus optional JA3, HTTP/2, and cipher-suite overrides in the desktop block.',
+  };
+
+  function pretty(value: unknown) {
+    return JSON.stringify(value, null, 2);
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-block-playground]').forEach((root) => {
+    const kind = root.dataset.blockPlayground;
+    const field = <T extends HTMLElement>(name: string) => root.querySelector<T>(`[data-field="${name}"]`)!;
+    const settings = root.querySelector<HTMLElement>('[data-settings]')!;
+    const response = root.querySelector<HTMLElement>('[data-response]')!;
+    const variables = root.querySelector<HTMLElement>('[data-vars]')!;
+
+    const render = () => {
+      if (kind === 'http') {
+        const method = (field<HTMLSelectElement>('method')).value;
+        const url = (field<HTMLInputElement>('url')).value;
+        const tlsClient = (field<HTMLSelectElement>('tls')).value;
+        const responseVar = (field<HTMLInputElement>('response-var')).value.trim() || 'SOURCE';
+        const profile = field<HTMLSelectElement>('profile').value;
+        const browserProfile = field<HTMLSelectElement>('browser-profile').value;
+        const azureOverrides = field<HTMLInputElement>('azure-overrides').value.trim();
+        root.querySelectorAll<HTMLElement>('[data-tls-wreq]').forEach((control) => { control.hidden = tlsClient !== 'WreqTLS'; });
+        root.querySelectorAll<HTMLElement>('[data-tls-azure]').forEach((control) => { control.hidden = tlsClient !== 'AzureTLS'; });
+        const headers = field<HTMLTextAreaElement>('headers').value.split('\n').filter(Boolean).map((line) => {
+          const [name, ...rest] = line.split(':'); return [name.trim(), rest.join(':').trim()];
+        });
+        const body = { id: 'u_482', plan: 'pro', status: 'active' };
+        const responseHeaders = { 'content-type': 'application/json', 'x-request-id': 'docs-demo-001' };
+        const cookies = { session: 'docs-session-001' };
+        settings.textContent = pretty({ type: 'HttpRequest', method, url, headers, follow_redirects: true, timeout_ms: 15000, tls_client: tlsClient, wreq_emulation: tlsClient === 'WreqTLS' ? profile : '', browser_profile: tlsClient === 'AzureTLS' ? browserProfile : '', azure_overrides: tlsClient === 'AzureTLS' ? azureOverrides : '', response_var: responseVar });
+        response.textContent = pretty({ status: 200, final_url: url, headers: responseHeaders, cookies, body });
+        variables.textContent = pretty({ [`data.${responseVar}`]: JSON.stringify(body), [`data.${responseVar}.STATUS`]: '200', [`data.${responseVar}.URL`]: url, [`data.${responseVar}.HEADERS`]: JSON.stringify(responseHeaders), [`data.${responseVar}.HEADERS.content-type`]: 'application/json', [`data.${responseVar}.COOKIES`]: JSON.stringify(cookies), [`data.${responseVar}.COOKIES.session`]: 'docs-session-001', [`data.${responseVar}.ERROR`]: 'Set only when the request fails (prior response state is cleared)', 'data.RESPONSECODE': '200 (compatibility alias)', 'data.ADDRESS': url, 'data.LASTRESPONSE': JSON.stringify(body), 'data.LASTHEADERS': JSON.stringify(responseHeaders) });
+        const note = root.querySelector<HTMLElement>('[data-transport-note]'); if (note) note.textContent = transportNotes[tlsClient];
+      }
+      if (kind === 'translate') {
+        const inputVar = (field<HTMLInputElement>('input-var')).value.trim() || 'STATUS';
+        const input = (field<HTMLInputElement>('input-value')).value;
+        const outputVar = (field<HTMLInputElement>('output-var')).value.trim() || 'STATE';
+        const mappings = (field<HTMLTextAreaElement>('mappings')).value;
+        const table = new Map<string, string>();
+        for (const line of mappings.split('\n')) {
+          const separator = line.indexOf('=>');
+          if (separator === -1) continue;
+          const source = line.slice(0, separator).trim();
+          const destination = line.slice(separator + 2).trim();
+          if (source && !table.has(source)) table.set(source, destination);
+        }
+        const output = table.get(input) ?? input;
+        settings.textContent = pretty({ type: 'Translate', input_var: inputVar, output_var: outputVar, capture: true, mappings });
+        response.textContent = pretty({ input, matched: table.has(input), output });
+        variables.textContent = pretty({ [inputVar]: input, [outputVar]: output, CAPTURE: { [outputVar]: output } });
+      }
+      if (kind === 'getdom') {
+        const selector = (field<HTMLInputElement>('selector')).value;
+        const outputVar = (field<HTMLInputElement>('output-var')).value.trim() || 'DOM';
+        const outerHtml = (field<HTMLInputElement>('outer-html')).checked;
+        const selected = '<span class="price" data-currency="USD">$24.00</span>';
+        const result = selector ? (outerHtml ? selected : '$24.00') : '<html><head>…</head><body>…</body></html>';
+        settings.textContent = pretty({ type: 'GetDom', selector, outer_html: outerHtml, output_var: outputVar, capture: true });
+        response.textContent = result;
+        variables.textContent = pretty({ [outputVar]: result, CAPTURE: { [outputVar]: result } });
+      }
+    };
+
+    root.querySelectorAll('input, select, textarea').forEach((control) => control.addEventListener('input', render));
+    root.querySelector<HTMLElement>('[data-run-example]')?.addEventListener('click', render);
+    render();
+  });
+</script>
+
+<style>
+  .block-playground { margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--sl-color-gray-5); border-radius: .7rem; background: var(--sl-color-black); }
+  .playground-header { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding-bottom: .85rem; border-bottom: 1px solid var(--sl-color-gray-5); }
+  h3 { margin: 0; font-size: 1rem; } .eyebrow, .panel-title { margin: 0 0 .25rem; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--sl-color-gray-3); }
+  .local-badge { white-space: nowrap; padding: .2rem .45rem; border: 1px solid var(--sl-color-gray-4); border-radius: 999px; font-size: .7rem; color: var(--sl-color-gray-2); }
+  .playground-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin: 1rem 0; }
+  label { display: grid; gap: .3rem; font-size: .76rem; color: var(--sl-color-gray-2); } .span-2 { grid-column: span 2; } .span-3 { grid-column: span 3; }
+  input, select, textarea { box-sizing: border-box; width: 100%; padding: .5rem .6rem; border: 1px solid var(--sl-color-gray-4); border-radius: .35rem; background: var(--sl-color-gray-6); color: var(--sl-color-white); font: inherit; font-size: .78rem; } textarea { resize: vertical; font-family: var(--sl-font-system); }
+  .check-row { display: flex; align-items: center; gap: .5rem; } .check-row input { width: auto; } .optional { color: var(--sl-color-gray-3); }
+  .transport-note { margin: -.25rem 0 .8rem; font-size: .78rem; color: var(--sl-color-gray-2); }
+  .run-example { padding: .45rem .7rem; border: 1px solid var(--sl-color-accent); border-radius: .35rem; background: var(--sl-color-accent-low); color: var(--sl-color-accent-high); font: inherit; font-size: .78rem; cursor: pointer; }
+  .run-example:hover { filter: brightness(1.15); }
+  .result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-top: 1rem; } .result-grid > div { min-width: 0; padding: .7rem; border: 1px solid var(--sl-color-gray-5); border-radius: .4rem; background: var(--sl-color-gray-6); }
+  pre { margin: 0; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: .72rem; line-height: 1.45; color: var(--sl-color-gray-1); }
+  @media (max-width: 720px) { .playground-grid, .result-grid { grid-template-columns: 1fr; } .span-2, .span-3 { grid-column: span 1; } .playground-header { align-items: flex-start; flex-direction: column; } }
+</style>

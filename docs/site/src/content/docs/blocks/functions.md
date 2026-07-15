@@ -5,6 +5,8 @@ description: Reference entries for functions and data transforms.
 
 # Functions and data transforms
 
+import BlockPlayground from '../../../components/BlockPlayground.astro';
+
 Use these blocks to transform values, manage structured data, and create derived variables.
 
 All entries use the selected block's settings panel. The focused configuration guidance below describes the fields to review before using the block.
@@ -22,6 +24,8 @@ All entries use the selected block's settings panel. The focused configuration g
 - **Availability:** Palette
 - **Purpose:** Maps an input value through a deterministic local lookup table.
 - **Configure:** Add one exact `source => destination` mapping per line; unmatched input is written unchanged.
+
+<BlockPlayground kind="translate" />
 
 ## List Function
 
