@@ -7,7 +7,6 @@ docs/site/node_modules/
 docs/site/.astro/
 docs/site/dist/
 *.exe
-sidecar/go.sum
 
 sidecar/reqflow-sidecar
 

@@ -1,0 +1,45 @@
+name: Linux build, package, and smoke
+description: Build Ironbullet and its sidecar, validate the Linux archive, and smoke-test the launcher.
+inputs:
+  version:
+    required: true
+  upload-artifact:
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Build companion sidecar
+      shell: bash
+      run: go build -trimpath -ldflags='-s -w' -o reqflow-sidecar .
+      working-directory: sidecar
+    - name: Run headless core suite
+      shell: bash
+      run: cargo test --lib --no-default-features --no-fail-fast
+    - name: Build desktop application
+      shell: bash
+      run: cargo build --release
+    - name: Package and inspect release archive
+      shell: bash
+      run: |
+        chmod +x start.sh scripts/package-linux.sh
+        scripts/package-linux.sh "${{ inputs.version }}"
+        unzip -Z1 dist/*.zip | sort | tee /tmp/archive-files
+        grep -Fx 'ironbullet' /tmp/archive-files
+        grep -Fx 'reqflow-sidecar' /tmp/archive-files
+        grep -Fx 'start.sh' /tmp/archive-files
+        grep -Fx 'release-manifest.json' /tmp/archive-files
+    - name: Virtual X11 desktop smoke test
+      shell: bash
+      run: |
+        set +e
+        timeout 15s xvfb-run -a ./dist/ironbullet-*/start.sh >/tmp/ironbullet.log 2>&1
+        status=$?
+        cat /tmp/ironbullet.log
+        test "$status" -eq 124
+    - name: Upload Linux release bundle
+      if: inputs.upload-artifact == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ironbullet-linux-x64
+        path: dist/ironbullet-*-linux-x64.zip
+        if-no-files-found: error
