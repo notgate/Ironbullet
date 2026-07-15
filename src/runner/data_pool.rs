@@ -10,6 +10,10 @@ pub struct DataPool {
     error_queue: Mutex<Vec<String>>,
     /// Whether the error replay pass has already been triggered.
     error_replayed: AtomicBool,
+    /// Lines handed to workers that have not yet reached a terminal/retry decision.
+    /// Error replay must wait for this to reach zero because another worker may
+    /// still enqueue retryable work after the main list has been claimed.
+    in_flight: AtomicUsize,
 }
 
 impl DataPool {
@@ -20,6 +24,7 @@ impl DataPool {
             retry_queue: Mutex::new(Vec::new()),
             error_queue: Mutex::new(Vec::new()),
             error_replayed: AtomicBool::new(false),
+            in_flight: AtomicUsize::new(0),
         }
     }
 
@@ -50,34 +55,49 @@ impl DataPool {
         // 1) Prioritise retry queue (credentials that failed transiently)
         if let Ok(mut queue) = self.retry_queue.lock() {
             if let Some(entry) = queue.pop() {
+                self.in_flight.fetch_add(1, Ordering::AcqRel);
                 return Some(entry);
             }
         }
         // 2) Main sequential pool
         let idx = self.index.fetch_add(1, Ordering::Relaxed);
-        if let Some(l) = self.lines.get(idx) {
-            return Some((l.clone(), 0));
+        if let Some(line) = self.lines.get(idx) {
+            self.in_flight.fetch_add(1, Ordering::AcqRel);
+            return Some((line.clone(), 0));
         }
-        // 3) Main pool exhausted — replay error queue once (issue #64).
-        //    Credentials that hit max_retries due to network/proxy errors get
-        //    one final chance with fresh proxies before being permanently dropped.
-        if !self.error_replayed.swap(true, Ordering::SeqCst) {
-            if let Ok(mut eq) = self.error_queue.lock() {
-                if !eq.is_empty() {
-                    let mut rq = self.retry_queue.lock().unwrap_or_else(|e| e.into_inner());
-                    let count = eq.len();
-                    for line in eq.drain(..) {
-                        rq.push((line, 0)); // retry_count=0: fresh start
+        // 3) Replay retry-exhausted errors once only after every previously
+        // claimed line has settled. A peer may still enqueue an error after
+        // another worker sees the main list exhausted.
+        if self.in_flight.load(Ordering::Acquire) == 0
+            && !self.error_replayed.swap(true, Ordering::SeqCst)
+        {
+            if let Ok(mut errors) = self.error_queue.lock() {
+                if !errors.is_empty() {
+                    let mut retries = self.retry_queue.lock().unwrap_or_else(|e| e.into_inner());
+                    let count = errors.len();
+                    for line in errors.drain(..) {
+                        retries.push((line, 0));
                     }
-                    eprintln!(
-                        "[data_pool] replaying {} errored credentials for final pass",
-                        count
-                    );
-                    return rq.pop();
+                    eprintln!("[data_pool] replaying {count} errored credentials for final pass");
+                    if let Some(entry) = retries.pop() {
+                        self.in_flight.fetch_add(1, Ordering::AcqRel);
+                        return Some(entry);
+                    }
                 }
             }
         }
         None
+    }
+
+    /// Mark a line returned by `next_line` as settled after its result has been
+    /// recorded or it has been placed back into a retry/error queue.
+    pub fn finish_attempt(&self) {
+        let previous = self.in_flight.fetch_sub(1, Ordering::AcqRel);
+        debug_assert!(previous > 0, "DataPool::finish_attempt without a claim");
+    }
+
+    pub fn has_in_flight(&self) -> bool {
+        self.in_flight.load(Ordering::Acquire) > 0
     }
 
     pub fn return_line(&self, line: String, retry_count: u32) {
@@ -158,6 +178,21 @@ mod tests {
         assert_eq!(pool.total(), 2);
         assert_eq!(pool.next_line(), Some(("line2".into(), 0)));
         assert_eq!(pool.next_line(), Some(("line3".into(), 0)));
+        assert_eq!(pool.next_line(), None);
+    }
+
+    #[test]
+    fn replays_errors_added_after_the_main_pool_is_claimed() {
+        let pool = DataPool::new(vec!["line1".into()]);
+        assert_eq!(pool.next_line(), Some(("line1".into(), 0)));
+        // A second worker reaches the end while the first is still processing.
+        assert_eq!(pool.next_line(), None);
+        assert!(pool.has_in_flight());
+
+        pool.stash_error("line1".into());
+        pool.finish_attempt();
+        assert_eq!(pool.next_line(), Some(("line1".into(), 0)));
+        pool.finish_attempt();
         assert_eq!(pool.next_line(), None);
     }
 }

@@ -71,6 +71,12 @@ pub(crate) async fn run_worker(runtime: WorkerRuntime) {
 
         let (data_line, retry_count) = match data_pool.next_line() {
             Some(entry) => entry,
+            None if data_pool.has_in_flight() => {
+                // Another worker can still return retryable work. Do not let
+                // this worker exit until the shared pool is truly drained.
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                continue;
+            }
             None => break,
         };
 
@@ -467,6 +473,8 @@ pub(crate) async fn run_worker(runtime: WorkerRuntime) {
                 }
             }
         }
+
+        data_pool.finish_attempt();
     }
 
     // Each credential's session was already closed inside the loop above.

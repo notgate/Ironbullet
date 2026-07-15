@@ -427,13 +427,10 @@ Error handling
 
 	function jobProgress(job: Job): number {
 		if (!job.stats || job.stats.total === 0) return 0;
-		// Completed/Stopped jobs always show 100% — the job is finished.
-		// During a run, show verified outcomes only (hits + fails) so the bar
-		// reflects how many accounts have a definitive result, not raw attempts.
-		const terminal = job.state === 'Completed' || job.state === 'Stopped' || job.state === 'Cancelled';
-		if (terminal) return 100;
-		const verified = (job.stats.hits ?? 0) + (job.stats.fails ?? 0);
-		return Math.min(99, verified / job.stats.total * 100); // cap at 99 while running
+		// `processed` is the unique input count; hits/fails/errors are outcome
+		// events and may include retry attempts, so they must not drive progress.
+		const attempted = job.stats.processed ?? 0;
+		return Math.min(100, attempted / job.stats.total * 100);
 	}
 </script>
 
@@ -751,7 +748,7 @@ Error handling
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.bans ?? 0) > 0 ? 'text-orange-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.bans) : 0}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.errors ?? 0) > 0 ? 'text-yellow-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.errors) : 0}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.to_check ?? 0) > 0 ? 'text-purple-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.to_check ?? 0) : 0}</td>
-							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground" title={job.stats ? `Verified: ${fmt((job.stats.hits ?? 0) + (job.stats.fails ?? 0))} / ${fmt(job.stats.total)} · Errors: ${fmt(job.stats.errors ?? 0)} (not counted toward progress)` : ''}>{job.stats ? `${fmt((job.stats.hits ?? 0) + (job.stats.fails ?? 0))}/${fmt(job.stats.total)}` : '0/0'}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground" title={job.stats ? `Unique inputs attempted: ${fmt(job.stats.processed ?? 0)} / ${fmt(job.stats.total)} · Outcome counters can include retry attempts.` : ''}>{job.stats ? `${fmt(job.stats.processed ?? 0)}/${fmt(job.stats.total)}` : '0/0'}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">{job.stats ? formatDuration(job.stats.elapsed_secs) : '0:00'}</td>
 							<td class="px-2 py-1 text-center" onclick={(e) => e.stopPropagation()}>
 								<div class="flex items-center justify-center gap-0.5">
