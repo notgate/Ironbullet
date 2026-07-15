@@ -211,6 +211,26 @@ impl ProxyEntry {
 fn parse_proxy_line(line: &str, default_type: Option<ProxyType>) -> Option<ProxyEntry> {
     let fallback = default_type.unwrap_or(ProxyType::Http);
 
+    // VMess/VLESS/Trojan are not HTTP proxy URLs themselves. Resolve each URI
+    // through the bundled Xray Core into a local SOCKS5 endpoint first.
+    if crate::sidecar::xray_pool::supports_uri(line) {
+        match crate::sidecar::xray_pool::resolve_proxy_uri(line) {
+            Ok(local) => {
+                return Some(ProxyEntry {
+                    proxy_type: ProxyType::Socks5,
+                    address: local
+                        .strip_prefix("socks5://")
+                        .unwrap_or(&local)
+                        .to_string(),
+                });
+            }
+            Err(error) => {
+                eprintln!("[xray-pool] failed to resolve proxy URI: {error}");
+                return None;
+            }
+        }
+    }
+
     // ── URL-scheme prefix (http://, https://, socks4://, socks5://, ss://) ────
     // Pass through as-is: reqwest/wreq/azuretls all accept full URL proxy strings.
     // ss:// (Shadowsocks): stored with the address intact; emitted as socks5://

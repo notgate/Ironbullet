@@ -1,6 +1,6 @@
 [package]
 name = "ironbullet"
-version = "0.6.2-rc.1"
+version = "0.6.2"
 edition = "2021"
 description = "Pipelined request automation & script builder"
 
@@ -71,6 +71,7 @@ rquickjs = { version = "0.8", features = ["classes"] }
 num-bigint = "0.4"
 num-traits = "0.2"
 resvg = "0.43"
+url = "2.5"
 
 wreq-util = { version = "3.0.0-rc.10", optional = true }
 

@@ -123,7 +123,21 @@ fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<P
         return None;
     }
 
-    let (proxy_type, address) = if line.starts_with("ss://") {
+    let (proxy_type, address) = if crate::sidecar::xray_pool::supports_uri(line) {
+        match crate::sidecar::xray_pool::resolve_proxy_uri(line) {
+            Ok(local) => (
+                ProxyType::Socks5,
+                local
+                    .strip_prefix("socks5://")
+                    .unwrap_or(&local)
+                    .to_string(),
+            ),
+            Err(error) => {
+                eprintln!("[xray-pool] failed to resolve proxy URI: {error}");
+                return None;
+            }
+        }
+    } else if line.starts_with("ss://") {
         // Shadowsocks — spin up (or reuse) a local SOCKS5 tunnel and use that.
         let local = crate::sidecar::shadowsocks_pool::resolve_ss_proxy(line);
         // local is `socks5://127.0.0.1:<port>` — parse it as a regular Socks5 entry

@@ -4,6 +4,7 @@ pub mod session;
 pub mod shadowsocks_pool;
 #[cfg(feature = "wreq-tls")]
 pub mod wreq_client;
+pub mod xray_pool;
 
 use dashmap::DashMap;
 use dunce;

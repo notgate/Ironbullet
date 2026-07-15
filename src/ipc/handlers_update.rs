@@ -339,6 +339,10 @@ fn stage_bundle_update(
     let sidecar_name = "reqflow-sidecar.exe";
     #[cfg(not(target_os = "windows"))]
     let sidecar_name = "reqflow-sidecar";
+    #[cfg(target_os = "windows")]
+    let xray_name = "xray.exe";
+    #[cfg(not(target_os = "windows"))]
+    let xray_name = "xray";
 
     let file =
         std::fs::File::open(bundle_path).map_err(|e| format!("Cannot read update bundle: {e}"))?;
@@ -346,6 +350,7 @@ fn stage_bundle_update(
         zip::ZipArchive::new(file).map_err(|e| format!("Cannot open update bundle: {e}"))?;
     let mut main_found = false;
     let mut sidecar_found = false;
+    let mut xray_found = false;
     for index in 0..archive.len() {
         let entry = archive
             .by_index(index)
@@ -357,10 +362,13 @@ fn stage_bundle_update(
         if name == sidecar_name {
             sidecar_found = true;
         }
+        if name == xray_name {
+            xray_found = true;
+        }
     }
-    if !main_found || !sidecar_found {
+    if !main_found || !sidecar_found || !xray_found {
         return Err(format!(
-            "Update bundle must contain {main_name} and {sidecar_name} at its root"
+            "Update bundle must contain {main_name}, {sidecar_name}, and {xray_name} at its root"
         ));
     }
 

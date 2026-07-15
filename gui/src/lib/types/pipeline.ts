@@ -73,7 +73,7 @@ export interface ProxyGroup {
 	cpm_per_proxy: number;
 }
 
-export type ProxySourceType_t = 'Http' | 'Https' | 'Socks4' | 'Socks5' | 'Shadowsocks';
+export type ProxySourceType_t = 'Http' | 'Https' | 'Socks4' | 'Socks5' | 'Shadowsocks' | 'VMess' | 'VLESS' | 'Trojan';
 
 export interface ProxySource {
 	source_type: 'File' | 'Url' | 'Inline';
