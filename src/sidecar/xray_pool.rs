@@ -59,12 +59,22 @@ impl XrayPool {
         let local_url = format!("socks5://127.0.0.1:{port}");
         let config_path = write_config(uri, &spec, port)?;
         let xray = xray_path()?;
-        let child = Command::new(xray)
+        let mut command = Command::new(xray);
+        command
             .args(["run", "-c"])
             .arg(&config_path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        // Xray is a console-subsystem executable on Windows. Stream redirection
+        // alone does not stop Windows from allocating a console for each managed
+        // URI; CREATE_NO_WINDOW keeps proxy checks and imports non-intrusive.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let child = command
             .spawn()
             .map_err(|e| format!("Cannot start bundled Xray Core: {e}"))?;
 
@@ -383,6 +393,19 @@ mod tests {
         );
         assert_eq!(spec.stream["realitySettings"]["shortId"], "abcd");
         assert_eq!(spec.stream["realitySettings"]["fingerprint"], "chrome");
+    }
+
+    #[test]
+    fn parses_vless_reality_vision_uri() {
+        let spec = parse_uri("vless://123e4567-e89b-12d3-a456-426614174000@198.51.100.42:443?security=reality&encryption=none&pbk=public-key&fp=firefox&type=tcp&flow=xtls-rprx-vision&sni=cdn.example.test&sid=0123456789abcdef").unwrap();
+        assert_eq!(spec.protocol, "vless");
+        assert_eq!(spec.user["flow"], "xtls-rprx-vision");
+        assert_eq!(spec.stream["security"], "reality");
+        assert_eq!(
+            spec.stream["realitySettings"]["serverName"],
+            "cdn.example.test"
+        );
+        assert_eq!(spec.stream["realitySettings"]["fingerprint"], "firefox");
     }
 
     #[test]

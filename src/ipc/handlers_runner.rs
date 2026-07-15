@@ -77,11 +77,12 @@ pub(super) fn debug_pipeline(
             if let Some(test_proxy) = data.get("test_proxy").and_then(|v| v.as_str()) {
                 if !test_proxy.is_empty() {
                     ctx.proxy = Some(if crate::sidecar::xray_pool::supports_uri(test_proxy) {
-                        crate::sidecar::xray_pool::resolve_proxy_uri(test_proxy)
-                            .unwrap_or_else(|error| {
+                        crate::sidecar::xray_pool::resolve_proxy_uri(test_proxy).unwrap_or_else(
+                            |error| {
                                 eprintln!("[debug] encrypted proxy startup failed: {error}");
                                 test_proxy.to_string()
-                            })
+                            },
+                        )
                     } else {
                         test_proxy.to_string()
                     });

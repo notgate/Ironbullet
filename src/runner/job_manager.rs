@@ -648,12 +648,26 @@ impl JobManager {
                             let mut captures = std::collections::HashMap::new();
                             captures.insert("status".into(), "error".into());
                             captures.insert("stage".into(), "xray_start".into());
-                            captures.insert("message".into(), format!("Encrypted proxy could not start: {error}"));
-                            let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None, ..Default::default() }).await;
+                            captures.insert(
+                                "message".into(),
+                                format!("Encrypted proxy could not start: {error}"),
+                            );
+                            let _ = tx
+                                .send(HitResult {
+                                    data_line: proxy,
+                                    captures,
+                                    proxy: None,
+                                    ..Default::default()
+                                })
+                                .await;
                             return;
                         }
                     }
-                } else if proxy.starts_with("http://") || proxy.starts_with("https://") || proxy.starts_with("socks5://") || proxy.starts_with("socks4://") {
+                } else if proxy.starts_with("http://")
+                    || proxy.starts_with("https://")
+                    || proxy.starts_with("socks5://")
+                    || proxy.starts_with("socks4://")
+                {
                     proxy.clone()
                 } else {
                     let scheme = match check_type.to_lowercase().as_str() {
