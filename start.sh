@@ -43,8 +43,8 @@ fi
 if [[ $webkitgtk_found -eq 0 ]]; then
     MSG="IronBullet requires WebKitGTK but it is not installed.
 
-Option 1 — Use the AppImage (no dependencies required):
-  Download ironbullet-v0.6.1-linux-x64.AppImage from the release page,
+Option 1 — Use the AppImage, if one is published for this release:
+  Download the matching ironbullet-vX.Y.Z-linux-x64.AppImage from the release page,
   chmod +x it, and run it directly.
 
 Option 2 — Install WebKitGTK for your distribution:
@@ -86,14 +86,11 @@ chmod +x "$BINARY" 2>/dev/null || true
 [[ -f "$SIDECAR" ]] && chmod +x "$SIDECAR" 2>/dev/null || true
 
 # ── Linux WebView env vars ───────────────────────────────────────────────────
-# Set before launch so they are guaranteed in the environment before GTK/GDK
-# initialises. These fix gray WebView on NVIDIA + Wayland (GNOME 46+) and
-# other black/gray screen configurations. Each is only set if not already
-# exported so users can override from their own shell environment.
-export GDK_BACKEND="${GDK_BACKEND:-x11}"
-export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
-export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
-export WEBKIT_FORCE_SANDBOX="${WEBKIT_FORCE_SANDBOX:-0}"
+# Prefer native Wayland when it is available, while retaining X11 as a fallback.
+# Do not force WebKit compositing/DMABUF workarounds globally: those settings
+# disable normal Wayland rendering and should be set only by users troubleshooting
+# a specific NVIDIA/driver issue.
+export GDK_BACKEND="${GDK_BACKEND:-wayland,x11}"
 
 # ── Launch IronBullet ────────────────────────────────────────────────────────
 exec "$BINARY" "$@"

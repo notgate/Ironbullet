@@ -1,0 +1,72 @@
+name: Linux build and runtime smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian/Ubuntu
+            container: ubuntu:24.04
+            install: >-
+              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y
+              build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+              libayatana-appindicator3-dev xvfb zip python3 git curl
+          - name: Fedora
+            container: fedora:42
+            install: >-
+              dnf install -y gcc gcc-c++ make pkgconf-pkg-config gtk3-devel
+              webkit2gtk4.1-devel libayatana-appindicator-gtk3-devel
+              xorg-x11-server-Xvfb zip python3 git curl && dnf clean all
+          - name: Arch
+            container: archlinux:latest
+            install: >-
+              pacman -Syu --noconfirm --needed base-devel pkgconf gtk3 webkit2gtk-4.1
+              libayatana-appindicator git curl xorg-server-xvfb zip python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+      - name: Install native dependencies
+        run: ${{ matrix.install }}
+      - name: Build companion sidecar
+        run: go build -trimpath -ldflags='-s -w' -o reqflow-sidecar .
+        working-directory: sidecar
+      - name: Run headless core suite
+        run: cargo test --lib --no-default-features --no-fail-fast
+      - name: Build desktop application
+        run: cargo build --release
+      - name: Package and inspect release archive
+        run: |
+          chmod +x start.sh scripts/package-linux.sh
+          scripts/package-linux.sh "${GITHUB_REF_NAME#v}"
+          unzip -Z1 dist/*.zip | sort | tee /tmp/archive-files
+          grep -Fx 'ironbullet' /tmp/archive-files
+          grep -Fx 'reqflow-sidecar' /tmp/archive-files
+          grep -Fx 'start.sh' /tmp/archive-files
+          grep -Fx 'release-manifest.json' /tmp/archive-files
+      - name: Virtual X11 desktop smoke test
+        run: |
+          set +e
+          timeout 15s xvfb-run -a ./dist/ironbullet-*/start.sh >/tmp/ironbullet.log 2>&1
+          status=$?
+          cat /tmp/ironbullet.log
+          test "$status" -eq 124
+      - name: Upload Linux release bundle
+        if: matrix.name == 'Debian/Ubuntu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ironbullet-linux-x64
+          path: dist/ironbullet-*-linux-x64.zip
+          if-no-files-found: error

@@ -50,7 +50,7 @@ Download the latest release for your platform:
 
 Extract and run `ironbullet` (or `ironbullet.exe`). The sidecar binary (`reqflow-sidecar` / `reqflow-sidecar.exe`) must be in the same directory.
 
-> **Linux users:** The AppImage bundles all dependencies including WebKit. The `.zip` build requires `webkit2gtk-4.1` to be installed.
+> **Linux users:** The published `.zip` bundle includes `ironbullet`, `reqflow-sidecar`, and `start.sh`; install `webkit2gtk-4.1` (or the compatible 4.0 package on older distributions) before launching it. An AppImage should only be used when a matching one is explicitly attached to that release.
 
 ## Quick Start
 
