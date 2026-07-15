@@ -30,7 +30,7 @@ jobs:
       - name: Build embedded frontend
         working-directory: gui
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run build
       - name: Verify release version
         shell: pwsh
