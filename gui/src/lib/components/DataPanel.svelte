@@ -82,6 +82,30 @@
 		app.pipeline.proxy_settings.proxy_sources = app.pipeline.proxy_settings.proxy_sources.filter((_, i) => i !== index);
 	}
 
+	let encryptedProxyUri = $state('');
+	let encryptedProxyNotice = $state('');
+
+	function importEncryptedProxy() {
+		const uri = encryptedProxyUri.trim();
+		const scheme = uri.split('://', 1)[0]?.toLowerCase();
+		if (!['vmess', 'vless', 'trojan'].includes(scheme)) {
+			encryptedProxyNotice = 'Paste a complete vmess://, vless://, or trojan:// URI.';
+			return;
+		}
+		if (app.pipeline.proxy_settings.proxy_sources.some(source => source.source_type === 'Inline' && source.value.split(/\r?\n/).includes(uri))) {
+			encryptedProxyNotice = 'This encrypted proxy is already in the active pipeline sources.';
+			return;
+		}
+		app.pipeline.proxy_settings.proxy_sources = [
+			...app.pipeline.proxy_settings.proxy_sources,
+			{ source_type: 'Inline', value: uri, refresh_interval_secs: 0, default_proxy_type: undefined },
+		];
+		if (app.pipeline.proxy_settings.proxy_mode === 'None') app.pipeline.proxy_settings.proxy_mode = 'Rotate';
+		encryptedProxyUri = '';
+		encryptedProxyNotice = 'Added as a managed Xray source. Use Debug → Proxy to test this URI before starting a job.';
+		syncPipelineToBackend();
+	}
+
 	// Proxy group management
 	let newGroupName = $state('');
 
@@ -241,10 +265,41 @@
 				]}
 				class="w-full text-[11px]"
 			/>
+			{#if app.pipeline.proxy_settings.proxy_mode === 'None'}
+				<button
+					class="mt-1.5 w-full rounded border border-primary/40 bg-primary/5 px-2 py-1.5 text-left"
+					onclick={() => { app.pipeline.proxy_settings.proxy_mode = 'Rotate'; encryptedProxyNotice = 'Proxy rotation enabled. Paste an encrypted URI below to import it.'; }}
+				>
+					<span class="block text-[10px] font-medium text-foreground">Import VMess, VLESS, or Trojan</span>
+					<span class="block text-[9px] text-muted-foreground/70 mt-0.5">Enable managed encrypted-proxy sources and test one in Debug before running a job.</span>
+				</button>
+			{/if}
 
 			<!-- Proxy Sources -->
 			{#if app.pipeline.proxy_settings.proxy_mode !== 'None'}
 				<div class="space-y-1">
+				<div class="rounded border border-border bg-background p-2 space-y-1.5">
+					<div class="flex items-center justify-between gap-2">
+						<div>
+							<p class="text-[10px] font-medium text-foreground">Encrypted proxy import</p>
+							<p class="text-[9px] text-muted-foreground/70">VMess, VLESS, and Trojan run through bundled Xray Core as local SOCKS5.</p>
+						</div>
+						<span class="text-[8px] font-mono text-primary shrink-0">MANAGED</span>
+					</div>
+					<div class="flex gap-1">
+						<input
+							type="text"
+							bind:value={encryptedProxyUri}
+							placeholder="vmess:// · vless:// · trojan://"
+							class="skeu-input flex-1 text-[10px] font-mono"
+							onkeydown={(e) => { if (e.key === 'Enter') importEncryptedProxy(); }}
+						/>
+						<button class="skeu-btn text-[9px] px-2" onclick={importEncryptedProxy}>Import</button>
+					</div>
+					<p class="text-[8px] leading-tight text-muted-foreground/60">Imported URIs are saved as Inline sources. For a single URI, copy it into Debug → Proxy and run F5 first.</p>
+					{#if encryptedProxyNotice}<p class="text-[9px] leading-tight {encryptedProxyNotice.startsWith('Added') ? 'text-green' : 'text-orange'}">{encryptedProxyNotice}</p>{/if}
+				</div>
+
 					{#each app.pipeline.proxy_settings.proxy_sources as source, i}
 						<div class="bg-background rounded p-1.5 border border-border space-y-1">
 							<div class="flex items-center gap-1">

@@ -37,8 +37,9 @@ In the "Data" field, provide a single test entry matching your wordlist format:
   custom|format|here           (custom separator)
 
 2. Add Proxy (Optional)
-Format: http://ip:port or http://user:pass@ip:port
-Example: http://127.0.0.1:8080
+Standard format: http://ip:port or http://user:pass@ip:port
+Encrypted format: vmess://, vless://, or trojan://
+For encrypted URIs, Ironbullet starts the bundled Xray Core and uses its private local SOCKS5 listener.
 
 3. Execute
 Click "Debug Run" button or press F5 to run the pipeline once
@@ -135,6 +136,7 @@ Once all validations pass, you can create a job with confidence that the pipelin
 		},
 	];
 	let testProxy = $state('');
+	let encryptedDebugProxy = $derived(/^(vmess|vless|trojan):\/\//i.test(testProxy.trim()));
 
 	// Sync test inputs to app state so ContextMenu "Debug Block" can read them
 	$effect(() => { app.debugTestDataLine = testDataLine; });
@@ -223,10 +225,13 @@ Once all validations pass, you can create a job with confidence that the pipelin
 			<input
 				type="text"
 				bind:value={testProxy}
-				placeholder="http://ip:port (optional)"
+				placeholder="http://… or vmess://… (optional)"
 				class="skeu-input text-[10px] font-mono w-[180px] py-0"
 			/>
 		</div>
+		{#if encryptedDebugProxy}
+			<span class="text-[9px] text-primary font-mono shrink-0" title="Debug Run will validate the bundled Xray listener before your pipeline request">XRAY → SOCKS5</span>
+		{/if}
 	</div>
 
 	{#if hasResults}
