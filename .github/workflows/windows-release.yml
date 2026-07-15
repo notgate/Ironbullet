@@ -34,8 +34,16 @@ jobs:
         shell: pwsh
         run: |
           choco install nasm --yes --no-progress
-          $nasm = (Get-Command nasm -ErrorAction Stop).Source
+          $candidates = @(
+            (Join-Path $env:ChocolateyInstall 'bin/nasm.exe'),
+            (Join-Path $env:ProgramFiles 'NASM/nasm.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'NASM/nasm.exe')
+          ) | Where-Object { Test-Path $_ }
+          if ($candidates.Count -eq 0) { throw 'Chocolatey reported NASM installed, but nasm.exe was not found.' }
+          $nasm = $candidates[0]
           "CMAKE_ASM_NASM_COMPILER=$nasm" >> $env:GITHUB_ENV
+          "PATH=$(Split-Path $nasm);$env:PATH" >> $env:GITHUB_ENV
+          Write-Host "Using NASM at $nasm"
       - name: Build Ironbullet
         run: cargo build --release
       - name: Assemble and verify release bundle
