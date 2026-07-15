@@ -1,0 +1,62 @@
+name: Publish Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix
+        required: true
+        default: 0.6.2-rc.1
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build, verify, and publish Windows x64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache-dependency-path: sidecar/go.sum
+      - name: Verify release version
+        shell: pwsh
+        run: |
+          $cargoVersion = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+          if ($cargoVersion -ne '${{ inputs.version }}') { throw "Cargo version $cargoVersion does not match requested ${{ inputs.version }}" }
+      - name: Build request-flow sidecar
+        working-directory: sidecar
+        run: go build -trimpath -ldflags='-s -w' -o reqflow-sidecar.exe .
+      - name: Build Ironbullet
+        run: cargo build --release
+      - name: Assemble and verify release bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ inputs.version }}'
+          $out = Join-Path $PWD 'dist'
+          $bundle = Join-Path $out "ironbullet-v$version-windows-x64"
+          $archive = Join-Path $out "ironbullet-v$version-windows-x64.zip"
+          Remove-Item -Recurse -Force $bundle, $archive -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $bundle | Out-Null
+          Copy-Item target/release/ironbullet.exe "$bundle/ironbullet.exe"
+          Copy-Item sidecar/reqflow-sidecar.exe "$bundle/reqflow-sidecar.exe"
+          $files = @('ironbullet.exe', 'reqflow-sidecar.exe') | ForEach-Object {
+            $item = Get-Item (Join-Path $bundle $_)
+            [ordered]@{ path = $_; sha256 = (Get-FileHash $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); executable = $true }
+          }
+          [ordered]@{ version = $version; platform = 'windows-x64'; files = $files } | ConvertTo-Json -Depth 4 | Set-Content "$bundle/release-manifest.json" -NoNewline
+          Compress-Archive -Path "$bundle/*" -DestinationPath $archive -CompressionLevel Optimal
+          $entries = [System.IO.Compression.ZipFile]::OpenRead($archive).Entries.Name
+          foreach ($required in @('ironbullet.exe', 'reqflow-sidecar.exe', 'release-manifest.json')) {
+            if ($entries -notcontains $required) { throw "Release archive is missing $required" }
+          }
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "v${{ inputs.version }}" "dist/ironbullet-v${{ inputs.version }}-windows-x64.zip" --title "Ironbullet v${{ inputs.version }}" --generate-notes
