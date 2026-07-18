@@ -49,7 +49,7 @@ jobs:
             container: archlinux:latest
             install: >-
               pacman -Syu --noconfirm --needed base-devel cmake clang pkgconf gtk3 webkit2gtk-4.1
-              libayatana-appindicator git curl xorg-server-xvfb zip python
+              libayatana-appindicator git curl xorg-server-xvfb zip unzip python
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
