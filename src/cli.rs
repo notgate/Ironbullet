@@ -300,6 +300,10 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
     );
 
     stats_handle.abort();
+    let _ = stats_handle.await;
+    // The orchestrator owns the final hit sender. Drop it only after all workers
+    // and the stats task have drained so the hit printer can observe channel EOF.
+    drop(orchestrator);
     let hit_count = hit_handle.await.unwrap_or(0);
     if hit_count > 0 {
         eprintln!("[*] {} hits printed to stdout", hit_count);

@@ -9,7 +9,7 @@ use std::{
     net::{TcpListener, TcpStream},
     path::PathBuf,
     process::{Child, Command, Stdio},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Condvar, Mutex, OnceLock},
     time::Duration,
 };
 
@@ -20,81 +20,239 @@ use url::Url;
 
 struct XrayEntry {
     local_url: String,
-    child: Child,
+    child: Mutex<Child>,
+    config_path: PathBuf,
+}
+
+impl XrayEntry {
+    fn is_running(&self) -> Result<bool, String> {
+        let mut child = self
+            .child
+            .lock()
+            .map_err(|_| "Xray child lock poisoned".to_string())?;
+        child
+            .try_wait()
+            .map(|status| status.is_none())
+            .map_err(|error| error.to_string())
+    }
+}
+
+impl Drop for XrayEntry {
+    fn drop(&mut self) {
+        if let Ok(child) = self.child.get_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let _ = std::fs::remove_file(&self.config_path);
+    }
+}
+
+struct XraySlot {
+    entry: OnceLock<Result<Arc<XrayEntry>, String>>,
+}
+
+impl XraySlot {
+    fn new() -> Self {
+        Self {
+            entry: OnceLock::new(),
+        }
+    }
 }
 
 pub struct XrayPool {
-    entries: Mutex<HashMap<String, XrayEntry>>,
+    state: Mutex<PoolState>,
+    resolvers_idle: Condvar,
+}
+
+struct PoolState {
+    entries: HashMap<String, Arc<XraySlot>>,
+    closing: bool,
+    active_resolvers: usize,
+}
+
+struct ResolveGuard<'a> {
+    pool: &'a XrayPool,
+}
+
+impl Drop for ResolveGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.pool.state.lock() {
+            state.active_resolvers = state.active_resolvers.saturating_sub(1);
+            if state.active_resolvers == 0 {
+                self.pool.resolvers_idle.notify_all();
+            }
+        }
+    }
 }
 
 impl XrayPool {
     fn new() -> Self {
         Self {
-            entries: Mutex::new(HashMap::new()),
+            state: Mutex::new(PoolState {
+                entries: HashMap::new(),
+                closing: false,
+                active_resolvers: 0,
+            }),
+            resolvers_idle: Condvar::new(),
         }
     }
 
+    fn begin_resolve(&self) -> Result<ResolveGuard<'_>, String> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "Xray pool lock poisoned".to_string())?;
+        if state.closing {
+            return Err("Xray pool is shutting down".to_string());
+        }
+        state.active_resolvers += 1;
+        Ok(ResolveGuard { pool: self })
+    }
+
     fn resolve(&self, uri: &str) -> Result<String, String> {
-        let cached = {
-            let mut entries = self.entries.lock().map_err(|_| "Xray pool lock poisoned")?;
-            let status = if let Some(entry) = entries.get_mut(uri) {
-                match entry.child.try_wait().map_err(|e| e.to_string())? {
-                    None => Some(entry.local_url.clone()),
-                    Some(_) => None,
+        self.resolve_with(uri, || start_xray(uri))
+    }
+
+    fn resolve_with<F>(&self, uri: &str, starter: F) -> Result<String, String>
+    where
+        F: Fn() -> Result<XrayEntry, String>,
+    {
+        let _resolve_guard = self.begin_resolve()?;
+        loop {
+            // The map lock is held only while selecting the per-URI slot. OnceLock
+            // provides single-flight initialization for one URI while allowing
+            // unrelated encrypted proxies to start in parallel.
+            let slot = {
+                let mut state = self
+                    .state
+                    .lock()
+                    .map_err(|_| "Xray pool lock poisoned".to_string())?;
+                state
+                    .entries
+                    .entry(uri.to_string())
+                    .or_insert_with(|| Arc::new(XraySlot::new()))
+                    .clone()
+            };
+
+            let result = slot.entry.get_or_init(|| starter().map(Arc::new)).clone();
+
+            match result {
+                Ok(entry) if entry.is_running()? => return Ok(entry.local_url.clone()),
+                Ok(_) => {
+                    self.remove_slot(uri, &slot)?;
+                    // The cached process exited. Remove the stale slot and retry
+                    // through a fresh single-flight initialization.
                 }
+                Err(error) => {
+                    self.remove_slot(uri, &slot)?;
+                    return Err(error);
+                }
+            }
+        }
+    }
+
+    fn remove_slot(&self, uri: &str, expected: &Arc<XraySlot>) -> Result<(), String> {
+        let removed = {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| "Xray pool lock poisoned".to_string())?;
+            if state
+                .entries
+                .get(uri)
+                .is_some_and(|current| Arc::ptr_eq(current, expected))
+            {
+                state.entries.remove(uri)
             } else {
                 None
-            };
-            if status.is_none() {
-                entries.remove(uri);
             }
-            status
         };
-        if let Some(url) = cached {
-            return Ok(url);
-        }
+        drop(removed);
+        Ok(())
+    }
 
-        let spec = parse_uri(uri)?;
-        let port = free_port()?;
-        let local_url = format!("socks5://127.0.0.1:{port}");
-        let config_path = write_config(uri, &spec, port)?;
-        let xray = xray_path()?;
-        let mut command = Command::new(xray);
-        command
-            .args(["run", "-c"])
-            .arg(&config_path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        // Xray is a console-subsystem executable on Windows. Stream redirection
-        // alone does not stop Windows from allocating a console for each managed
-        // URI; CREATE_NO_WINDOW keeps proxy checks and imports non-intrusive.
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
-        let child = command
-            .spawn()
-            .map_err(|e| format!("Cannot start bundled Xray Core: {e}"))?;
+    fn shutdown(&self) -> usize {
+        let entries = match self.state.lock() {
+            Ok(mut state) => {
+                state.closing = true;
+                while state.active_resolvers > 0 {
+                    state = match self.resolvers_idle.wait(state) {
+                        Ok(state) => state,
+                        Err(_) => return 0,
+                    };
+                }
+                std::mem::take(&mut state.entries)
+            }
+            Err(_) => return 0,
+        };
+        let count = entries.len();
+        drop(entries);
+        count
+    }
+}
 
-        // Xray binds quickly. Verify the listener so a malformed config is not
-        // returned as a working proxy endpoint.
-        if !wait_for_port(port, Duration::from_secs(3)) {
-            let mut child = child;
-            let _ = child.kill();
-            return Err("Xray Core did not open its local SOCKS listener; check the proxy URI and bundled runtime".into());
-        }
+fn start_xray(uri: &str) -> Result<XrayEntry, String> {
+    let spec = parse_uri(uri)?;
+    let port = free_port()?;
+    let local_url = format!("socks5://127.0.0.1:{port}");
+    let xray = xray_path()?;
+    let config_path = write_config(uri, &spec, port)?;
+    let mut config_guard = TempConfigGuard::new(config_path.clone());
+    let mut command = Command::new(xray);
+    command
+        .args(["run", "-c"])
+        .arg(&config_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // Xray is a console-subsystem executable on Windows. Stream redirection
+    // alone does not stop Windows from allocating a console for each managed
+    // URI; CREATE_NO_WINDOW keeps proxy checks and imports non-intrusive.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let child = command
+        .spawn()
+        .map_err(|e| format!("Cannot start bundled Xray Core: {e}"))?;
 
-        let mut entries = self.entries.lock().map_err(|_| "Xray pool lock poisoned")?;
-        entries.insert(
-            uri.to_string(),
-            XrayEntry {
-                local_url: local_url.clone(),
-                child,
-            },
-        );
-        Ok(local_url)
+    // Xray binds quickly. Verify the listener so a malformed config is not
+    // returned as a working proxy endpoint.
+    if !wait_for_port(port, Duration::from_secs(3)) {
+        let mut child = child;
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err("Xray Core did not open its local SOCKS listener; check the proxy URI and bundled runtime".into());
+    }
+
+    config_guard.disarm();
+    Ok(XrayEntry {
+        local_url,
+        child: Mutex::new(child),
+        config_path,
+    })
+}
+
+struct TempConfigGuard {
+    path: Option<PathBuf>,
+}
+
+impl TempConfigGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path: Some(path) }
+    }
+
+    fn disarm(&mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for TempConfigGuard {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.take() {
+            let _ = std::fs::remove_file(path);
+        }
     }
 }
 
@@ -113,6 +271,13 @@ pub fn supports_uri(uri: &str) -> bool {
 /// Resolve a VMess, VLESS, or Trojan URI to a managed local SOCKS5 endpoint.
 pub fn resolve_proxy_uri(uri: &str) -> Result<String, String> {
     pool().resolve(uri.trim())
+}
+
+/// Stop every managed Xray process and remove its generated configuration.
+/// This must be called on both GUI and CLI shutdown because child processes are
+/// not terminated when `std::process::Child` handles are merely dropped.
+pub fn shutdown_all() -> usize {
+    pool().shutdown()
 }
 
 #[derive(Debug, Clone)]
@@ -372,6 +537,214 @@ fn wait_for_port(port: u16, timeout: Duration) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc, Barrier,
+    };
+
+    fn sleeper_entry(name: &str) -> XrayEntry {
+        #[cfg(windows)]
+        let child = {
+            use std::os::windows::process::CommandExt;
+            let mut command = Command::new("powershell.exe");
+            command
+                .args(["-NoProfile", "-Command", "Start-Sleep -Seconds 30"])
+                .creation_flags(0x0800_0000);
+            command.spawn().expect("spawn Windows sleeper")
+        };
+        #[cfg(not(windows))]
+        let child = Command::new("sh")
+            .args(["-c", "sleep 30"])
+            .spawn()
+            .expect("spawn Unix sleeper");
+
+        let config_path = std::env::temp_dir().join(format!(
+            "ironbullet-xray-pool-test-{name}-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&config_path, b"{}").expect("write fake config");
+        XrayEntry {
+            local_url: format!("socks5://127.0.0.1:{name}"),
+            child: Mutex::new(child),
+            config_path,
+        }
+    }
+
+    fn process_exists(pid: u32) -> bool {
+        #[cfg(windows)]
+        {
+            Command::new("powershell.exe")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    &format!(
+                        "if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
+                    ),
+                ])
+                .status()
+                .is_ok_and(|status| status.success())
+        }
+        #[cfg(not(windows))]
+        {
+            std::path::Path::new(&format!("/proc/{pid}")).exists()
+        }
+    }
+
+    #[test]
+    fn same_uri_initialization_is_single_flight() {
+        const CALLERS: usize = 24;
+        let pool = Arc::new(XrayPool::new());
+        let starts = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(Barrier::new(CALLERS));
+        let mut callers = Vec::new();
+
+        for _ in 0..CALLERS {
+            let pool = pool.clone();
+            let starts = starts.clone();
+            let barrier = barrier.clone();
+            callers.push(std::thread::spawn(move || {
+                barrier.wait();
+                pool.resolve_with("vless://same", || {
+                    starts.fetch_add(1, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(75));
+                    Ok(sleeper_entry("41001"))
+                })
+            }));
+        }
+
+        let urls: Vec<String> = callers
+            .into_iter()
+            .map(|caller| {
+                caller
+                    .join()
+                    .expect("caller panicked")
+                    .expect("resolve failed")
+            })
+            .collect();
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        assert!(urls.iter().all(|url| url == &urls[0]));
+        assert_eq!(pool.shutdown(), 1);
+    }
+
+    #[test]
+    fn distinct_uris_initialize_in_parallel() {
+        let pool = Arc::new(XrayPool::new());
+        let barrier = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(3));
+        let (entered_tx, entered_rx) = mpsc::sync_channel(2);
+        let mut callers = Vec::new();
+
+        for (uri, port) in [("vless://one", "41002"), ("vless://two", "41003")] {
+            let pool = pool.clone();
+            let barrier = barrier.clone();
+            let release = release.clone();
+            let entered_tx = entered_tx.clone();
+            callers.push(std::thread::spawn(move || {
+                barrier.wait();
+                pool.resolve_with(uri, || {
+                    entered_tx.send(uri).expect("report initializer entry");
+                    release.wait();
+                    Ok(sleeper_entry(port))
+                })
+            }));
+        }
+
+        let mut entered = vec![
+            entered_rx.recv().expect("first initializer did not enter"),
+            entered_rx.recv().expect("second initializer did not enter"),
+        ];
+        entered.sort_unstable();
+        assert_eq!(entered, vec!["vless://one", "vless://two"]);
+        release.wait();
+
+        for caller in callers {
+            caller
+                .join()
+                .expect("caller panicked")
+                .expect("resolve failed");
+        }
+        assert_eq!(pool.shutdown(), 2);
+    }
+
+    #[test]
+    fn shutdown_waits_for_in_flight_initializer_and_rejects_new_resolves() {
+        let pool = Arc::new(XrayPool::new());
+        let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+        let (release_tx, release_rx) = mpsc::sync_channel(1);
+        let child_pid = Arc::new(AtomicUsize::new(0));
+        let config_path = Arc::new(Mutex::new(PathBuf::new()));
+
+        let resolver_pool = pool.clone();
+        let resolver_pid = child_pid.clone();
+        let resolver_config = config_path.clone();
+        let resolver = std::thread::spawn(move || {
+            resolver_pool.resolve_with("vless://slow-start", || {
+                entered_tx.send(()).expect("report initializer entry");
+                release_rx.recv().expect("release initializer");
+                let entry = sleeper_entry("41005");
+                resolver_pid.store(
+                    entry.child.lock().expect("child lock").id() as usize,
+                    Ordering::SeqCst,
+                );
+                *resolver_config.lock().expect("config path lock") = entry.config_path.clone();
+                Ok(entry)
+            })
+        });
+
+        entered_rx.recv().expect("initializer did not enter");
+        let shutdown_pool = pool.clone();
+        let shutdown = std::thread::spawn(move || shutdown_pool.shutdown());
+
+        loop {
+            if pool.state.lock().expect("pool state lock").closing {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        let rejected = pool.resolve_with("vless://late", || panic!("late starter ran"));
+        assert_eq!(rejected.unwrap_err(), "Xray pool is shutting down");
+
+        release_tx.send(()).expect("release initializer");
+        resolver
+            .join()
+            .expect("resolver panicked")
+            .expect("in-flight resolver failed");
+        assert_eq!(shutdown.join().expect("shutdown panicked"), 1);
+
+        let pid = child_pid.load(Ordering::SeqCst) as u32;
+        let config = config_path.lock().expect("config path lock").clone();
+        assert!(!process_exists(pid), "initializer child survived shutdown");
+        assert!(!config.exists(), "initializer config survived shutdown");
+    }
+
+    #[test]
+    fn shutdown_kills_child_and_removes_config() {
+        let pool = XrayPool::new();
+        let child_pid = AtomicUsize::new(0);
+        let config_path = Mutex::new(PathBuf::new());
+
+        pool.resolve_with("trojan://shutdown", || {
+            let entry = sleeper_entry("41004");
+            child_pid.store(
+                entry.child.lock().expect("child lock").id() as usize,
+                Ordering::SeqCst,
+            );
+            *config_path.lock().expect("config path lock") = entry.config_path.clone();
+            Ok(entry)
+        })
+        .expect("resolve failed");
+
+        let child_pid = child_pid.load(Ordering::SeqCst) as u32;
+        let config_path = config_path.lock().expect("config path lock").clone();
+        assert!(process_exists(child_pid));
+        assert!(config_path.exists());
+        assert_eq!(pool.shutdown(), 1);
+        assert!(
+            !process_exists(child_pid),
+            "managed child survived shutdown"
+        );
+        assert!(!config_path.exists(), "generated config survived shutdown");
+    }
 
     #[test]
     fn parses_vless_and_builds_tls_stream() {

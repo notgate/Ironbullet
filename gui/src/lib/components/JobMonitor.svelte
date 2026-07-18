@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
-	import { send } from '$lib/ipc';
+	import { send, sendAsync } from '$lib/ipc';
 	import { fmt, formatDuration } from '$lib/utils';
 	import type { Job } from '$lib/types';
 	import SkeuSelect from './SkeuSelect.svelte';
@@ -159,7 +159,7 @@ Stats columns: \`CPM\` (checks per minute) • \`Hits\` • \`Processed/Total\` 
 
 Queued → Running → Completed
    ↓         ↓
-Waiting   Paused → Stopped
+Waiting   Paused → Stopping → Stopped
 
 State definitions:
 
@@ -182,6 +182,10 @@ Paused (Orange indicator)
   Temporarily suspended
   Progress and statistics preserved
   Can be resumed or stopped
+
+Stopping (Orange indicator)
+  Cancellation requested; in-flight workers are draining
+  Restart, edit, and remove remain disabled until fully stopped
 
 Completed (Blue indicator)
   All data processed successfully
@@ -284,17 +288,23 @@ Error handling
 	function saveJobEdit(andResume = false) {
 		if (!editingJob) return;
 		const id = editingJob.id;
-		send('update_job', {
+		const state = editingJob.state;
+		const update = {
 			id,
 			name: editName,
 			thread_count: editThreads,
 			data_source: { source_type: editingJob.data_source?.source_type ?? 'File', value: editDataSource },
 			proxy_check_url: editProxyCheckUrl,
 			proxy_check_list: editProxyCheckList,
-		});
+		};
 		if (andResume) {
-			// Brief delay so update_job settles before starting
-			setTimeout(() => startJob(id), 150);
+			void sendAsync('update_job', 'job_updated', update).then((response) => {
+				if (response === null) return;
+				if (state === 'Paused') resumeJob(id);
+				else startJob(id);
+			});
+		} else {
+			send('update_job', update);
 		}
 		console.log('[JobMonitor] saveJobEdit:', id, andResume ? '(+resume)' : '');
 		showEditDialog = false;
@@ -417,6 +427,7 @@ Error handling
 		switch (state) {
 			case 'Running': return 'text-green';
 			case 'Paused': return 'text-orange';
+			case 'Stopping': return 'text-orange';
 			case 'Completed': return 'text-primary';
 			case 'Stopped': return 'text-red';
 			case 'Queued': return 'text-muted-foreground';
@@ -430,7 +441,8 @@ Error handling
 		// `processed` is the unique input count; hits/fails/errors are outcome
 		// events and may include retry attempts, so they must not drive progress.
 		const attempted = job.stats.processed ?? 0;
-		return Math.min(100, attempted / job.stats.total * 100);
+		const percent = Math.min(100, attempted / job.stats.total * 100);
+		return job.state === 'Running' || job.state === 'Paused' || job.state === 'Stopping' ? Math.min(99, percent) : percent;
 	}
 </script>
 
@@ -731,7 +743,7 @@ Error handling
 								</div>
 							</td>
 							<td class="px-2 py-1 {stateColor(job.state)}">
-								<span class="inline-block w-1.5 h-1.5 rounded-full mr-1 {job.state === 'Running' ? 'bg-green' : job.state === 'Paused' ? 'bg-orange' : job.state === 'Completed' ? 'bg-primary' : 'bg-muted-foreground'}"></span>
+								<span class="inline-block w-1.5 h-1.5 rounded-full mr-1 {job.state === 'Running' ? 'bg-green' : job.state === 'Paused' || job.state === 'Stopping' ? 'bg-orange' : job.state === 'Completed' ? 'bg-primary' : 'bg-muted-foreground'}"></span>
 								{job.state}
 							</td>
 							<td class="px-2 py-1">
@@ -748,7 +760,7 @@ Error handling
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.bans ?? 0) > 0 ? 'text-orange-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.bans) : 0}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.errors ?? 0) > 0 ? 'text-yellow-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.errors) : 0}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.to_check ?? 0) > 0 ? 'text-purple-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.to_check ?? 0) : 0}</td>
-							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground" title={job.stats ? `Unique inputs attempted: ${fmt(job.stats.processed ?? 0)} / ${fmt(job.stats.total)} · Outcome counters can include retry attempts.` : ''}>{job.stats ? `${fmt(job.stats.processed ?? 0)}/${fmt(job.stats.total)}` : '0/0'}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground" title={job.stats ? `Unique inputs attempted: ${fmt(Math.min(job.stats.processed ?? 0, job.stats.total))} / ${fmt(job.stats.total)} · Outcome counters can include retry attempts.` : ''}>{job.stats ? `${fmt(Math.min(job.stats.processed ?? 0, job.stats.total))}/${fmt(job.stats.total)}` : '0/0'}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">{job.stats ? formatDuration(job.stats.elapsed_secs) : '0:00'}</td>
 							<td class="px-2 py-1 text-center" onclick={(e) => e.stopPropagation()}>
 								<div class="flex items-center justify-center gap-0.5">
@@ -761,14 +773,14 @@ Error handling
 										<button class="p-0.5 rounded hover:bg-secondary text-green" title="Resume" onclick={() => resumeJob((job as any).id)}><Play size={11} /></button>
 										<button class="p-0.5 rounded hover:bg-secondary text-red" title="Stop" onclick={() => stopJob((job as any).id)}><Square size={11} /></button>
 									{:else if job.state === 'Stopped' || job.state === 'Completed'}
-										<button class="p-0.5 rounded hover:bg-secondary text-green" title="Resume from last position" onclick={() => startJob((job as any).id)}><PlayCircle size={11} /></button>
+										<button class="p-0.5 rounded hover:bg-secondary text-green" title="Restart from beginning" onclick={() => startJob((job as any).id)}><PlayCircle size={11} /></button>
 									{/if}
 									<button
 										class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"
 										title="View hits in Data panel"
 										onclick={() => viewJobHits((job as any).id)}
 									><Database size={11} /></button>
-									{#if job.state !== 'Running'}
+									{#if job.state !== 'Running' && job.state !== 'Stopping'}
 										<button
 											class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-blue transition-colors"
 											title="Edit job"
@@ -833,7 +845,7 @@ Error handling
 				<div class="flex gap-2 pt-1">
 					<button class="skeu-btn text-xs text-green flex-1" onclick={() => saveJobEdit(false)}>Save</button>
 					<button class="skeu-btn text-xs flex-1 flex items-center justify-center gap-1" style="color: var(--primary)" onclick={() => saveJobEdit(true)}>
-						<PlayCircle size={12} />Save & Resume
+						<PlayCircle size={12} />{editingJob?.state === 'Paused' ? 'Save & Resume' : 'Save & Restart'}
 					</button>
 					<button class="skeu-btn text-xs text-muted-foreground" onclick={() => showEditDialog = false}>Cancel</button>
 				</div>

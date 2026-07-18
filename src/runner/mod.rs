@@ -85,6 +85,7 @@ pub struct RunnerOrchestrator {
     sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
     thread_count: usize,
     running: Arc<AtomicBool>,
+    cancelled: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
     stats: Arc<RunnerStatsInner>,
     hits_tx: mpsc::Sender<HitResult>,
@@ -156,6 +157,7 @@ impl RunnerOrchestrator {
             sidecar_tx,
             thread_count,
             running: Arc::new(AtomicBool::new(false)),
+            cancelled: Arc::new(AtomicBool::new(false)),
             paused: Arc::new(AtomicBool::new(false)),
             stats: Arc::new(RunnerStatsInner {
                 processed: AtomicUsize::new(0),
@@ -179,7 +181,14 @@ impl RunnerOrchestrator {
     }
 
     pub async fn start(&self) {
+        if self.cancelled.load(Ordering::SeqCst) {
+            return;
+        }
         self.running.store(true, Ordering::SeqCst);
+        if self.cancelled.load(Ordering::SeqCst) {
+            self.running.store(false, Ordering::SeqCst);
+            return;
+        }
         self.paused.store(false, Ordering::SeqCst);
 
         let now = std::time::SystemTime::now()
@@ -212,8 +221,14 @@ impl RunnerOrchestrator {
         let mut handles = Vec::new();
 
         for i in 0..self.thread_count {
+            if self.cancelled.load(Ordering::SeqCst) {
+                break;
+            }
             if gradual && i > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(effective_delay_ms)).await;
+                if self.cancelled.load(Ordering::SeqCst) {
+                    break;
+                }
             }
 
             let pipeline = self.pipeline.clone();
@@ -270,6 +285,7 @@ impl RunnerOrchestrator {
     }
 
     pub fn stop(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
         self.running.store(false, Ordering::SeqCst);
     }
 
@@ -334,5 +350,38 @@ impl RunnerOrchestrator {
 
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stop_before_start_prevents_any_input_from_being_consumed() {
+        let (sidecar_tx, _sidecar_rx) = mpsc::channel(1);
+        let (hits_tx, _hits_rx) = mpsc::channel(1);
+        let runner = RunnerOrchestrator::new(RunnerSetup {
+            pipeline: Pipeline::default(),
+            proxy_mode: ProxyMode::None,
+            data_pool: DataPool::new(vec!["must-not-run".into()]),
+            proxy_pool: ProxyPool::empty(),
+            sidecar_tx,
+            thread_count: 4,
+            hits_tx,
+            plugin_manager: None,
+            chrome_executable_path: None,
+            custom_input_values: std::collections::HashMap::new(),
+        });
+
+        runner.stop();
+        tokio::time::timeout(std::time::Duration::from_millis(100), runner.start())
+            .await
+            .expect("cancelled runner start should return immediately");
+
+        let stats = runner.get_stats();
+        assert_eq!(stats.consumed, 0);
+        assert_eq!(stats.processed, 0);
+        assert!(!runner.is_running());
     }
 }

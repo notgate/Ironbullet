@@ -372,6 +372,8 @@ if (cfg.collections_path) app.collectionsPath = cfg.collections_path;
 				if (resp.data && Array.isArray(resp.data)) {
 					const newJobsList = resp.data as any[];
 					const liveJobIds = new Set(newJobsList.map((j: any) => j.id));
+					if (app.activeJobId && !liveJobIds.has(app.activeJobId)) app.activeJobId = null;
+					if (app.hitsDbJobId && !liveJobIds.has(app.hitsDbJobId)) app.hitsDbJobId = null;
 
 					// Prune jobHitsDb entries for jobs that no longer exist
 					const currentDb = app.jobHitsDb;

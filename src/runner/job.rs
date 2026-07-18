@@ -78,6 +78,7 @@ pub enum JobState {
     Waiting,
     Running,
     Paused,
+    Stopping,
     Completed,
     Stopped,
 }

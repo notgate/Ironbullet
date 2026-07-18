@@ -156,7 +156,29 @@ cargo build --release
 
 The binary is at `target/release/ironbullet`. Copy it alongside `reqflow-sidecar` to run.
 
-**Cross-compile for Windows (from Linux):**
+### Windows release candidates
+
+Release candidates are built and packaged on a native Windows x64 host—not from WSL or a Linux cross-compiler:
+
+```powershell
+cd D:\path\to\Ironbullet
+cmd /c scripts\build-windows-native.cmd
+```
+
+The script uses the Visual Studio x64 environment, pinned NASM/LLVM tools under `.build-tools`, builds the Go sidecar and Rust application, bundles the pinned Xray runtime and license, writes `release-manifest.sha256`, and creates the versioned zip under `dist/`. Verify the zip and manifest locally before tagging or publishing.
+
+### Config speed/race test
+
+`tools/config-speed-test` contains a loopback web target, browser dashboard, real `.rfx` fixture, local forward proxy, and Windows runner scripts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ./tools/config-speed-test/run.ps1
+powershell -ExecutionPolicy Bypass -File ./tools/config-speed-test/run.ps1 -UseLocalProxy
+```
+
+A run fails on missing or duplicate requests, unexpected serialization, a nonzero runner exit, or proxy bypass. Public proxy sampling is deliberately separate because third-party proxy availability cannot establish runner performance.
+
+**Cross-compile for Windows (development only; not release-authoritative):**
 ```bash
 cargo build --release --target x86_64-pc-windows-gnu
 ```

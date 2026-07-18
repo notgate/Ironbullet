@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>IronBullet Config Speed Test</title>
+  <style>
+    :root{color-scheme:dark;font-family:"Segoe UI",sans-serif;background:#111;color:#ddd}body{max-width:920px;margin:40px auto;padding:0 20px}h1{font-size:24px;font-weight:600}p{color:#999;line-height:1.5}.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:24px 0}.field{display:grid;gap:6px}label{font-size:12px;color:#aaa}input,button{border:1px solid #444;background:#1d1d1d;color:#eee;padding:10px;font:inherit}button{cursor:pointer;background:#2b2b2b}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric{border:1px solid #333;background:#181818;padding:14px}.metric b{display:block;font-size:20px;margin-top:4px}pre{border:1px solid #333;background:#181818;padding:14px;overflow:auto;min-height:100px}pre.pass{border-color:#315d3a}pre.fail{border-color:#8a3b3b;color:#ffb8b8}@media(max-width:700px){.controls,.metrics{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+  <h1>IronBullet Config Speed Test</h1>
+  <p>This browser baseline targets the same loopback endpoint used by the real IronBullet CLI benchmark. It detects missing and duplicate request IDs and reports latency percentiles and concurrency without external-network noise.</p>
+  <div class="controls">
+    <div class="field"><label for="requests">Requests</label><input id="requests" type="number" value="1000" min="1" max="50000"></div>
+    <div class="field"><label for="concurrency">Concurrency</label><input id="concurrency" type="number" value="100" min="1" max="1000"></div>
+    <div class="field"><label for="delay">Server delay (ms)</label><input id="delay" type="number" value="10" min="0" max="5000"></div>
+  </div>
+  <button id="run">Run browser baseline</button>
+  <div class="metrics" style="margin-top:20px">
+    <div class="metric">Throughput<b id="rps">—</b></div><div class="metric">p50<b id="p50">—</b></div><div class="metric">p95<b id="p95">—</b></div><div class="metric">Max active<b id="active">—</b></div>
+  </div>
+  <pre id="result">Ready.</pre>
+<script>
+const $=id=>document.getElementById(id);const percentile=(v,p)=>v[Math.min(v.length-1,Math.floor(v.length*p))]??0;
+$("run").onclick=async()=>{
+  const count=+$('requests').value,workers=Math.min(count,+$('concurrency').value),delay=+$('delay').value;
+  await fetch('/api/reset');
+  const successfulLatencies=[],failedLatencies=[],errors=[];let next=0;
+  const started=performance.now();
+  await Promise.all(Array.from({length:workers},async()=>{while(true){
+    const id=next++;if(id>=count)return;const t=performance.now();
+    try{const r=await fetch(`/api/check?id=browser-${id}&delay_ms=${delay}`);if(!r.ok)throw new Error(`HTTP ${r.status}`);successfulLatencies.push(performance.now()-t);}
+    catch(e){failedLatencies.push(performance.now()-t);errors.push({id,error:String(e)});}
+  }}));
+  const elapsed=performance.now()-started;successfulLatencies.sort((a,b)=>a-b);
+  const stats=await fetch('/api/stats').then(r=>r.json());
+  const missing=count-stats.target.uniqueRequests,duplicates=stats.target.duplicateRequests;
+  const integrityOk=errors.length===0&&missing===0&&duplicates===0&&successfulLatencies.length===count;
+  const summary={status:integrityOk?'PASS':'FAIL',requested:count,successful:successfulLatencies.length,failed:errors.length,missing,duplicates,elapsedMs:+elapsed.toFixed(1),successfulRequestsPerSecond:+(successfulLatencies.length/(elapsed/1000)).toFixed(1),successfulP50Ms:+percentile(successfulLatencies,.5).toFixed(1),successfulP95Ms:+percentile(successfulLatencies,.95).toFixed(1),maxActive:stats.target.maxActive,failedLatencySamples:failedLatencies.length};
+  $('rps').textContent=`${summary.successfulRequestsPerSecond}/s`;$('p50').textContent=`${summary.successfulP50Ms} ms`;$('p95').textContent=`${summary.successfulP95Ms} ms`;$('active').textContent=summary.maxActive;$('result').className=integrityOk?'pass':'fail';$('result').textContent=JSON.stringify(summary,null,2);
+};
+</script>
+</body>
+</html>

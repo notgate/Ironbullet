@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "metadata": {
+    "name": "IronBullet Loopback Speed Test",
+    "author": "IronBullet",
+    "created": "2026-07-17T00:00:00Z",
+    "modified": "2026-07-17T00:00:00Z"
+  },
+  "pipeline": {
+    "id": "55cc1db4-1b58-48dd-848c-5ea2ba929073",
+    "name": "IronBullet Loopback Speed Test",
+    "author": "IronBullet",
+    "created": "2026-07-17T00:00:00Z",
+    "modified": "2026-07-17T00:00:00Z",
+    "blocks": [
+      {
+        "id": "9946698e-5e51-4706-a998-35f808ffea7c",
+        "block_type": "HttpRequest",
+        "label": "Loopback request",
+        "disabled": false,
+        "safe_mode": false,
+        "settings": {
+          "type": "HttpRequest",
+          "method": "GET",
+          "url": "__TARGET_URL__/api/check?id=<input.USER>&delay_ms=__DELAY_MS__",
+          "headers": [["Accept", "application/json"]],
+          "body": "",
+          "body_type": "None",
+          "content_type": "application/json",
+          "follow_redirects": true,
+          "max_redirects": 2,
+          "timeout_ms": 10000,
+          "auto_redirect": true,
+          "basic_auth": null,
+          "http_version": "HTTP/1.1",
+          "response_var": "RESPONSE",
+          "custom_cookies": "",
+          "ssl_verify": true,
+          "proxy_insecure": false,
+          "cipher_suites": "",
+          "tls_client": "RustTLS",
+          "browser_profile": "",
+          "ja3_override": "",
+          "http2fp_override": "",
+          "wreq_emulation": ""
+        }
+      },
+      {
+        "id": "371124a0-9019-4ad1-aec8-ea8a5dc13993",
+        "block_type": "KeyCheck",
+        "label": "Require completed HTTP 200 response",
+        "disabled": false,
+        "safe_mode": false,
+        "settings": {
+          "type": "KeyCheck",
+          "keychains": [
+            {
+              "result": "Success",
+              "conditions": [
+                {
+                  "source": "data.RESPONSECODE",
+                  "comparison": "EqualTo",
+                  "value": "200"
+                }
+              ],
+              "mode": "And"
+            }
+          ],
+          "stop_on_fail": false
+        }
+      }
+    ],
+    "startup_blocks": [],
+    "data_settings": {"wordlist_type":"Credentials","separator":":","slices":["USER","PASS"]},
+    "proxy_settings": {"proxy_mode":"None","proxy_sources":[],"ban_duration_secs":30,"max_retries_before_ban":1,"cpm_per_proxy":0,"proxy_groups":[],"active_group":""},
+    "browser_settings": {"browser":"chrome","ja3":null,"http2_fingerprint":null,"user_agent":null},
+    "runner_settings": {"threads":100,"skip":0,"take":0,"continue_statuses":["Retry"],"custom_status_name":"CUSTOM","max_retries":0,"concurrent_per_proxy":0,"start_threads_gradually":false,"gradual_delay_ms":0,"automatic_thread_count":false,"lower_threads_on_retry":false,"retry_thread_reduction_pct":25,"pause_on_ratelimit":false,"only_proxyless":false},
+    "output_settings": {"save_to_file":false,"save_to_database":false,"include_response":false,"output_directory":"results","output_format":"{data} | {captures}","database_path":"","output_format_type":"Txt","capture_filters":[]},
+    "custom_inputs": []
+  }
+}

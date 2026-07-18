@@ -230,12 +230,13 @@ fn run_cli() {
     };
 
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-    rt.block_on(async {
-        if let Err(e) = ironbullet::cli::run(cli).await {
-            eprintln!("error: {}", e);
-            std::process::exit(1);
-        }
-    });
+    let result = rt.block_on(ironbullet::cli::run(cli));
+    ironbullet::sidecar::xray_pool::shutdown_all();
+    ironbullet::sidecar::shadowsocks_pool::shutdown_all();
+    if let Err(error) = result {
+        eprintln!("error: {}", error);
+        std::process::exit(1);
+    }
 }
 
 /// Position window on screen. Computes physical window size from known logical
@@ -738,9 +739,15 @@ fn run_gui() {
                             let _ = std::fs::remove_file(autosave_path());
                         });
                     }
+                    ironbullet::sidecar::xray_pool::shutdown_all();
+                    ironbullet::sidecar::shadowsocks_pool::shutdown_all();
                     *control_flow = ControlFlow::Exit;
                 }
             },
+            Event::LoopDestroyed => {
+                ironbullet::sidecar::xray_pool::shutdown_all();
+                ironbullet::sidecar::shadowsocks_pool::shutdown_all();
+            }
             _ => {}
         }
     });

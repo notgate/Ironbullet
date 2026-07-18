@@ -1,4 +1,6 @@
 target/
+.build-tools/
+dist/
 .tmp/
 node_modules/
 gui/build/
@@ -21,6 +23,7 @@ data/tb_*
 data/test_*
 data/testsite_*
 results/
+tools/config-speed-test/.run/
 release/
 issue*.json
 UI_DEBUG_REPORT.md

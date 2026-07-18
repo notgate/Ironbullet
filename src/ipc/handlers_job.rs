@@ -323,7 +323,7 @@ pub(super) fn start_job(
                 }
                 drop(s);
 
-                if let Some(mut hits_rx) = pc_rx {
+                if let Some((mut hits_rx, generation)) = pc_rx {
                     let state2 = state.clone();
                     let state3 = state.clone();
                     let state4 = state.clone();
@@ -334,6 +334,9 @@ pub(super) fn start_job(
                     inner_handle.spawn(async move {
                         while let Some(hit) = hits_rx.recv().await {
                             let mut s = state2.lock().await;
+                            if !s.job_manager.is_current_generation(uuid, generation) {
+                                break;
+                            }
                             let status = hit.captures.get("status").map(|s| s.as_str()).unwrap_or("alive");
                             if status == "alive" {
                                 s.job_manager.add_hit(uuid, hit.clone());
@@ -350,14 +353,14 @@ pub(super) fn start_job(
                                 serde_json::to_string(&hit_resp).unwrap_or_default())).await;
                         }
 
-                        // All tasks done — mark Completed
+                        // All tasks done — snapshot counters and preserve a
+                        // manually requested Stopped state.
                         let mut s = state3.lock().await;
-                        if let Some(job) = s.job_manager.get_job_mut(uuid) {
-                            job.state = ironbullet::runner::job::JobState::Completed;
-                            job.completed = Some(chrono::Utc::now());
+                        if !s.job_manager.complete_proxy_check_job(uuid, generation) {
+                            return;
                         }
-                        s.job_manager.update_job_stats(uuid);
                         let jobs = s.job_manager.list_jobs();
+
                         let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
                         let _ = js_tx2.send(format!("window.__ipc_callback({})",
                             serde_json::to_string(&resp).unwrap_or_default())).await;
@@ -369,6 +372,9 @@ pub(super) fn start_job(
                         loop {
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                             let mut s = state4.lock().await;
+                            if !s.job_manager.is_current_generation(uuid, generation) {
+                                break;
+                            }
                             let still_running = s.job_manager.get_job_mut(uuid)
                                 .map(|j| j.state == ironbullet::runner::job::JobState::Running)
                                 .unwrap_or(false);
@@ -475,7 +481,7 @@ pub(super) fn start_job(
             }
             drop(s);
 
-            if let Some((runner, mut hits_rx)) = result {
+            if let Some((runner, mut hits_rx, generation)) = result {
                 let job_id = uuid;
                 let state2 = state.clone();
 
@@ -490,6 +496,9 @@ pub(super) fn start_job(
                 inner_handle.spawn(async move {
                     while let Some(hit) = hits_rx.recv().await {
                         let mut s = state2.lock().await;
+                        if !s.job_manager.is_current_generation(job_id, generation) {
+                            break;
+                        }
                         s.job_manager.add_hit(job_id, hit.clone());
                         // Push runner_hit with job_id so frontend routes it to the correct
                         // per-job hits view in the Hits Database panel.
@@ -513,6 +522,9 @@ pub(super) fn start_job(
                     loop {
                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         let mut s = state3.lock().await;
+                        if !s.job_manager.is_current_generation(job_id, generation) {
+                            break;
+                        }
                         s.job_manager.update_job_stats(job_id);
                         let jobs = s.job_manager.list_jobs();
                         let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
@@ -525,7 +537,9 @@ pub(super) fn start_job(
                 inner_handle.spawn(async move {
                     runner.start().await;
                     let mut s = state4.lock().await;
-                    s.job_manager.complete_job(job_id);
+                    if !s.job_manager.complete_job(job_id, generation) {
+                        return;
+                    }
                     let jobs = s.job_manager.list_jobs();
                     let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
                     let _ = js_tx.send(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())).await;

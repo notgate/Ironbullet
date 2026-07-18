@@ -237,6 +237,7 @@ impl ProxyCheckHandle {
 pub struct JobManager {
     jobs: Vec<Job>,
     runners: HashMap<Uuid, Arc<RunnerOrchestrator>>,
+    runner_generations: HashMap<Uuid, u64>,
     /// Per-job hits database (used by both config and proxy-check jobs)
     job_hits: HashMap<Uuid, Vec<HitResult>>,
     /// Stats handles for proxy-check jobs (no RunnerOrchestrator)
@@ -248,6 +249,7 @@ impl JobManager {
         Self {
             jobs: Vec::new(),
             runners: HashMap::new(),
+            runner_generations: HashMap::new(),
             job_hits: HashMap::new(),
             proxy_handles: HashMap::new(),
         }
@@ -268,6 +270,7 @@ impl JobManager {
             h.running.store(false, std::sync::atomic::Ordering::SeqCst);
         }
         self.runners.remove(&id);
+        self.runner_generations.remove(&id);
         self.proxy_handles.remove(&id);
         self.job_hits.remove(&id);
         let len = self.jobs.len();
@@ -334,6 +337,15 @@ impl JobManager {
     }
 
     pub fn pause_job(&mut self, id: Uuid) -> bool {
+        if self
+            .jobs
+            .iter()
+            .find(|job| job.id == id)
+            .map(|job| job.state)
+            != Some(JobState::Running)
+        {
+            return false;
+        }
         if let Some(runner) = self.runners.get(&id) {
             runner.pause();
             if let Some(job) = self.get_job_mut(id) {
@@ -346,6 +358,15 @@ impl JobManager {
     }
 
     pub fn resume_job(&mut self, id: Uuid) -> bool {
+        if self
+            .jobs
+            .iter()
+            .find(|job| job.id == id)
+            .map(|job| job.state)
+            != Some(JobState::Paused)
+        {
+            return false;
+        }
         if let Some(runner) = self.runners.get(&id) {
             runner.resume();
             if let Some(job) = self.get_job_mut(id) {
@@ -369,9 +390,14 @@ impl JobManager {
         if let Some(h) = self.proxy_handles.get(&id) {
             h.running.store(false, std::sync::atomic::Ordering::SeqCst);
         }
+        let draining = self.runners.contains_key(&id) || self.proxy_handles.contains_key(&id);
         if let Some(job) = self.get_job_mut(id) {
-            job.state = JobState::Stopped;
-            job.completed = Some(Utc::now());
+            job.state = if draining {
+                JobState::Stopping
+            } else {
+                JobState::Stopped
+            };
+            job.completed = if draining { None } else { Some(Utc::now()) };
             true
         } else {
             false
@@ -393,7 +419,11 @@ impl JobManager {
         sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
         plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
         chrome_executable_path: Option<std::path::PathBuf>,
-    ) -> Option<(Arc<RunnerOrchestrator>, mpsc::Receiver<HitResult>)> {
+    ) -> Option<(Arc<RunnerOrchestrator>, mpsc::Receiver<HitResult>, u64)> {
+        if self.runners.contains_key(&id) {
+            eprintln!("[job] start_job: job {id} already has an active or draining runner");
+            return None;
+        }
         let job = self.jobs.iter_mut().find(|j| j.id == id)?;
 
         // Load data from source
@@ -489,9 +519,12 @@ impl JobManager {
 
         job.state = JobState::Running;
         job.started = Some(Utc::now());
+        let generation = self.runner_generations.entry(id).or_insert(0);
+        *generation = generation.saturating_add(1);
+        let generation = *generation;
         self.runners.insert(id, runner.clone());
 
-        Some((runner, hits_rx))
+        Some((runner, hits_rx, generation))
     }
 
     /// Check start conditions for queued jobs (delayed/scheduled)
@@ -530,13 +563,25 @@ impl JobManager {
         }
     }
 
-    pub fn complete_job(&mut self, id: Uuid) {
+    pub fn is_current_generation(&self, id: Uuid, generation: u64) -> bool {
+        self.runner_generations.get(&id).copied() == Some(generation)
+    }
+
+    pub fn complete_job(&mut self, id: Uuid, generation: u64) -> bool {
+        if !self.is_current_generation(id, generation) {
+            return false;
+        }
         self.update_job_stats(id);
         self.runners.remove(&id);
         if let Some(job) = self.get_job_mut(id) {
-            job.state = super::job::JobState::Completed;
+            job.state = if job.state == super::job::JobState::Stopping {
+                super::job::JobState::Stopped
+            } else {
+                super::job::JobState::Completed
+            };
             job.completed = Some(chrono::Utc::now());
         }
+        true
     }
 }
 
@@ -545,10 +590,14 @@ impl JobManager {
         &mut self,
         id: Uuid,
         handle: tokio::runtime::Handle,
-    ) -> Option<tokio::sync::mpsc::Receiver<HitResult>> {
+    ) -> Option<(tokio::sync::mpsc::Receiver<HitResult>, u64)> {
         use crate::runner::job::JobType;
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+        if self.proxy_handles.contains_key(&id) {
+            eprintln!("[proxy_check] job {id} already has an active or draining run");
+            return None;
+        }
         let job = self.jobs.iter_mut().find(|j| j.id == id)?;
         if job.job_type != JobType::ProxyCheck {
             return None;
@@ -588,6 +637,10 @@ impl JobManager {
             job.started = None;
             return None;
         }
+
+        let generation = self.runner_generations.entry(id).or_insert(0);
+        *generation = generation.saturating_add(1);
+        let generation = *generation;
 
         // ── Atomic stats shared with every spawned task ────────────────────
         let processed_ctr = Arc::new(AtomicUsize::new(0));
@@ -738,6 +791,149 @@ impl JobManager {
             });
         }
 
-        Some(hits_rx)
+        Some((hits_rx, generation))
+    }
+
+    /// Finalize a proxy-check after every spawned task has drained. Preserve a
+    /// manual Stopped state, snapshot final counters, then discard its live
+    /// stats handle. Encrypted adapters remain pooled until application exit so
+    /// other jobs and paused runners can safely reuse their local endpoints.
+    pub fn complete_proxy_check_job(&mut self, id: Uuid, generation: u64) -> bool {
+        if !self.is_current_generation(id, generation) {
+            return false;
+        }
+        self.update_job_stats(id);
+        self.proxy_handles.remove(&id);
+        if let Some(job) = self.get_job_mut(id) {
+            job.state = if job.state == JobState::Stopping {
+                JobState::Stopped
+            } else {
+                JobState::Completed
+            };
+            job.completed = Some(Utc::now());
+        }
+        true
+    }
+}
+
+#[cfg(test)]
+mod proxy_check_completion_tests {
+    use super::*;
+    use crate::runner::job::JobType;
+    use std::sync::atomic::{AtomicBool, AtomicUsize};
+
+    fn insert_proxy_check(manager: &mut JobManager, state: JobState) -> (Uuid, u64) {
+        let mut job = Job::default();
+        job.job_type = JobType::ProxyCheck;
+        job.state = state;
+        let id = manager.add_job(job);
+        manager.proxy_handles.insert(
+            id,
+            ProxyCheckHandle {
+                processed: Arc::new(AtomicUsize::new(1)),
+                hits: Arc::new(AtomicUsize::new(1)),
+                fails: Arc::new(AtomicUsize::new(0)),
+                errors: Arc::new(AtomicUsize::new(0)),
+                active_threads: Arc::new(AtomicUsize::new(0)),
+                total: 1,
+                running: Arc::new(AtomicBool::new(false)),
+                start_ms: 1,
+            },
+        );
+        manager.runner_generations.insert(id, 1);
+        (id, 1)
+    }
+
+    #[test]
+    fn drained_proxy_check_preserves_manual_stop_and_releases_handle() {
+        let mut manager = JobManager::new();
+        let (id, generation) = insert_proxy_check(&mut manager, JobState::Stopping);
+
+        assert!(manager.complete_proxy_check_job(id, generation));
+
+        let job = manager.jobs.iter().find(|job| job.id == id).unwrap();
+        assert_eq!(job.state, JobState::Stopped);
+        assert_eq!(job.stats.processed, 1);
+        assert!(job.completed.is_some());
+        assert!(!manager.proxy_handles.contains_key(&id));
+    }
+
+    #[test]
+    fn drained_running_proxy_check_becomes_completed() {
+        let mut manager = JobManager::new();
+        let (id, generation) = insert_proxy_check(&mut manager, JobState::Running);
+
+        assert!(manager.complete_proxy_check_job(id, generation));
+
+        let job = manager.jobs.iter().find(|job| job.id == id).unwrap();
+        assert_eq!(job.state, JobState::Completed);
+        assert!(!manager.proxy_handles.contains_key(&id));
+    }
+
+    #[test]
+    fn stale_generation_cannot_complete_replacement_runner() {
+        let mut manager = JobManager::new();
+        let mut job = Job::default();
+        job.state = JobState::Running;
+        let id = manager.add_job(job);
+        manager.runner_generations.insert(id, 2);
+
+        assert!(!manager.complete_job(id, 1));
+        assert_eq!(
+            manager.jobs.iter().find(|job| job.id == id).unwrap().state,
+            JobState::Running
+        );
+        assert!(manager.complete_job(id, 2));
+        assert_eq!(
+            manager.jobs.iter().find(|job| job.id == id).unwrap().state,
+            JobState::Completed
+        );
+    }
+
+    #[test]
+    fn current_generation_completion_finishes_stopping_as_stopped() {
+        let mut manager = JobManager::new();
+        let mut job = Job::default();
+        job.state = JobState::Stopping;
+        let id = manager.add_job(job);
+        manager.runner_generations.insert(id, 1);
+
+        assert!(manager.complete_job(id, 1));
+        assert_eq!(
+            manager.jobs.iter().find(|job| job.id == id).unwrap().state,
+            JobState::Stopped
+        );
+    }
+
+    #[test]
+    fn stale_proxy_generation_cannot_remove_replacement_handle() {
+        let mut manager = JobManager::new();
+        let (id, old_generation) = insert_proxy_check(&mut manager, JobState::Running);
+        manager.runner_generations.insert(id, old_generation + 1);
+
+        assert!(!manager.complete_proxy_check_job(id, old_generation));
+        assert!(manager.proxy_handles.contains_key(&id));
+        assert_eq!(
+            manager.jobs.iter().find(|job| job.id == id).unwrap().state,
+            JobState::Running
+        );
+    }
+
+    #[test]
+    fn stop_keeps_proxy_handle_occupied_until_drain_completion() {
+        let mut manager = JobManager::new();
+        let (id, generation) = insert_proxy_check(&mut manager, JobState::Running);
+
+        assert!(manager.stop_job(id));
+        assert_eq!(
+            manager.jobs.iter().find(|job| job.id == id).unwrap().state,
+            JobState::Stopping
+        );
+        assert!(manager.proxy_handles.contains_key(&id));
+        assert!(manager.complete_proxy_check_job(id, generation));
+        assert_eq!(
+            manager.jobs.iter().find(|job| job.id == id).unwrap().state,
+            JobState::Stopped
+        );
     }
 }

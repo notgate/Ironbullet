@@ -1,7 +1,7 @@
 import type { Pipeline, ProxySettings } from './pipeline';
 import type { RunnerStats } from './runtime';
 
-export type JobState = 'Queued' | 'Waiting' | 'Running' | 'Paused' | 'Completed' | 'Stopped';
+export type JobState = 'Queued' | 'Waiting' | 'Running' | 'Paused' | 'Stopping' | 'Completed' | 'Stopped';
 
 export type DataSourceType = 'File' | 'Folder' | 'Url' | 'Inline' | 'Range' | 'Combinations';
 
