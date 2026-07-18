@@ -66,6 +66,7 @@ pub struct XrayPool {
 
 struct PoolState {
     entries: HashMap<String, Arc<XraySlot>>,
+    leases: HashMap<String, usize>,
     closing: bool,
     active_resolvers: usize,
 }
@@ -90,6 +91,7 @@ impl XrayPool {
         Self {
             state: Mutex::new(PoolState {
                 entries: HashMap::new(),
+                leases: HashMap::new(),
                 closing: false,
                 active_resolvers: 0,
             }),
@@ -110,10 +112,30 @@ impl XrayPool {
     }
 
     fn resolve(&self, uri: &str) -> Result<String, String> {
-        self.resolve_with(uri, || start_xray(uri))
+        self.resolve_with_lease(uri, false, || start_xray(uri))
     }
 
+    fn resolve_leased(&self, uri: &str) -> Result<String, String> {
+        self.resolve_with_lease(uri, true, || start_xray(uri))
+    }
+
+    #[cfg(test)]
     fn resolve_with<F>(&self, uri: &str, starter: F) -> Result<String, String>
+    where
+        F: Fn() -> Result<XrayEntry, String>,
+    {
+        self.resolve_with_lease(uri, false, starter)
+    }
+
+    #[cfg(test)]
+    fn resolve_leased_with<F>(&self, uri: &str, starter: F) -> Result<String, String>
+    where
+        F: Fn() -> Result<XrayEntry, String>,
+    {
+        self.resolve_with_lease(uri, true, starter)
+    }
+
+    fn resolve_with_lease<F>(&self, uri: &str, leased: bool, starter: F) -> Result<String, String>
     where
         F: Fn() -> Result<XrayEntry, String>,
     {
@@ -137,7 +159,32 @@ impl XrayPool {
             let result = slot.entry.get_or_init(|| starter().map(Arc::new)).clone();
 
             match result {
-                Ok(entry) if entry.is_running()? => return Ok(entry.local_url.clone()),
+                Ok(entry) if entry.is_running()? => {
+                    let local_url = entry.local_url.clone();
+                    if leased {
+                        let mut state = self
+                            .state
+                            .lock()
+                            .map_err(|_| "Xray pool lock poisoned".to_string())?;
+                        if state.closing {
+                            return Err("Xray pool is shutting down".to_string());
+                        }
+                        if state
+                            .entries
+                            .get(uri)
+                            .is_some_and(|current| Arc::ptr_eq(current, &slot))
+                        {
+                            *state.leases.entry(uri.to_string()).or_insert(0) += 1;
+                            return Ok(local_url);
+                        }
+                        // A concurrent release removed this slot before this caller
+                        // could claim its job lease. Retry against the current slot
+                        // instead of returning a local endpoint whose child may be
+                        // dropped immediately after this branch.
+                    } else {
+                        return Ok(local_url);
+                    }
+                }
                 Ok(_) => {
                     self.remove_slot(uri, &slot)?;
                     // The cached process exited. Remove the stale slot and retry
@@ -151,6 +198,28 @@ impl XrayPool {
         }
     }
 
+    fn release(&self, uri: &str) -> bool {
+        let removed = {
+            let mut state = match self.state.lock() {
+                Ok(state) => state,
+                Err(_) => return false,
+            };
+            let Some(count) = state.leases.get_mut(uri) else {
+                return false;
+            };
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                state.leases.remove(uri);
+                state.entries.remove(uri)
+            } else {
+                None
+            }
+        };
+        let killed = removed.is_some();
+        drop(removed);
+        killed
+    }
+
     fn remove_slot(&self, uri: &str, expected: &Arc<XraySlot>) -> Result<(), String> {
         let removed = {
             let mut state = self
@@ -162,6 +231,7 @@ impl XrayPool {
                 .get(uri)
                 .is_some_and(|current| Arc::ptr_eq(current, expected))
             {
+                state.leases.remove(uri);
                 state.entries.remove(uri)
             } else {
                 None
@@ -181,6 +251,7 @@ impl XrayPool {
                         Err(_) => return 0,
                     };
                 }
+                state.leases.clear();
                 std::mem::take(&mut state.entries)
             }
             Err(_) => return 0,
@@ -271,6 +342,28 @@ pub fn supports_uri(uri: &str) -> bool {
 /// Resolve a VMess, VLESS, or Trojan URI to a managed local SOCKS5 endpoint.
 pub fn resolve_proxy_uri(uri: &str) -> Result<String, String> {
     pool().resolve(uri.trim())
+}
+
+/// Resolve an encrypted proxy URI and claim one job-scoped lease for the caller.
+/// The caller must release the same trimmed URI when the job drains.
+pub fn resolve_proxy_uri_leased(uri: &str) -> Result<String, String> {
+    pool().resolve_leased(uri.trim())
+}
+
+/// Release one previously claimed job lease for an encrypted proxy URI.
+/// Returns true when this was the final lease and the managed Xray child was torn down.
+pub fn release_proxy_uri(uri: &str) -> bool {
+    pool().release(uri.trim())
+}
+
+/// Release a set of job-scoped encrypted proxy leases.
+pub fn release_proxy_uris<'a, I>(uris: I) -> usize
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    uris.into_iter()
+        .filter(|uri| release_proxy_uri(uri))
+        .count()
 }
 
 /// Stop every managed Xray process and remove its generated configuration.
@@ -744,6 +837,48 @@ mod tests {
             "managed child survived shutdown"
         );
         assert!(!config_path.exists(), "generated config survived shutdown");
+    }
+
+    #[test]
+    fn leased_uri_is_killed_after_last_release() {
+        let pool = XrayPool::new();
+        let child_pid = AtomicUsize::new(0);
+        let config_path = Mutex::new(PathBuf::new());
+        let starts = AtomicUsize::new(0);
+        let uri = "vless://leased-job";
+
+        pool.resolve_leased_with(uri, || {
+            starts.fetch_add(1, Ordering::SeqCst);
+            let entry = sleeper_entry("41006");
+            child_pid.store(
+                entry.child.lock().expect("child lock").id() as usize,
+                Ordering::SeqCst,
+            );
+            *config_path.lock().expect("config path lock") = entry.config_path.clone();
+            Ok(entry)
+        })
+        .expect("first leased resolve failed");
+
+        pool.resolve_leased_with(uri, || {
+            panic!("second leased resolve should reuse first child")
+        })
+        .expect("second leased resolve failed");
+
+        let child_pid = child_pid.load(Ordering::SeqCst) as u32;
+        let config_path = config_path.lock().expect("config path lock").clone();
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        assert!(process_exists(child_pid));
+        assert!(!pool.release(uri), "first release should leave one lease");
+        assert!(process_exists(child_pid));
+        assert!(pool.release(uri), "final release should drop the child");
+        assert!(
+            !process_exists(child_pid),
+            "leased child survived final release"
+        );
+        assert!(
+            !config_path.exists(),
+            "leased config survived final release"
+        );
     }
 
     #[test]

@@ -15,7 +15,7 @@ use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 /// Build a ProxyPool and resolve the effective ProxyMode.
 /// Returns (pool, effective_mode) — the mode accounts for group-level overrides
 /// so Sticky groups auto-elevate even when the top-level mode is None (#58/#59).
-fn build_proxy_pool(settings: &ProxySettings) -> (ProxyPool, ProxyMode) {
+fn build_proxy_pool(settings: &ProxySettings) -> (ProxyPool, ProxyMode, Vec<String>) {
     let (sources, effective_mode) = if !settings.active_group.is_empty() {
         if let Some(g) = settings
             .proxy_groups
@@ -36,10 +36,11 @@ fn build_proxy_pool(settings: &ProxySettings) -> (ProxyPool, ProxyMode) {
     };
 
     if matches!(effective_mode, ProxyMode::None) || sources.is_empty() {
-        return (ProxyPool::empty(), ProxyMode::None);
+        return (ProxyPool::empty(), ProxyMode::None, Vec::new());
     }
 
     let mut entries: Vec<ProxyEntry> = Vec::new();
+    let mut xray_leases = Vec::new();
     for src in sources {
         let raw_lines: Vec<String> = match src.source_type {
             ProxySourceType::File => std::fs::read_to_string(&src.value)
@@ -72,16 +73,17 @@ fn build_proxy_pool(settings: &ProxySettings) -> (ProxyPool, ProxyMode) {
                     "socks5" => Some(ProxyType::Socks5),
                     _ => None,
                 });
-        entries.extend(
-            raw_lines
-                .into_iter()
-                .filter_map(|l| parse_proxy_for_pool(&l, default_type)),
-        );
+        for line in raw_lines {
+            if let Some(entry) = parse_proxy_for_pool(&line, default_type, &mut xray_leases) {
+                entries.push(entry);
+            }
+        }
     }
 
     (
         ProxyPool::new(entries, settings.ban_duration_secs),
         effective_mode,
+        xray_leases,
     )
 }
 
@@ -111,7 +113,11 @@ fn detect_proxy_type_from_port(port_str: &str, fallback: ProxyType) -> ProxyType
 /// FIX #56: Auto-detect SOCKS5 from common ports (1080, 1081, 9050, 9150) when no
 /// explicit type is provided. This fixes the issue where SOCKS5 proxies work in
 /// Debugger but fail in Jobs mode (plain host:port was defaulting to HTTP).
-fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<ProxyEntry> {
+fn parse_proxy_for_pool(
+    line: &str,
+    default_type: Option<ProxyType>,
+    xray_leases: &mut Vec<String>,
+) -> Option<ProxyEntry> {
     // Strip SIP002 / URL fragment labels (e.g. `ss://...@host:port#Dubai%2C%20UAE`)
     let line = if let Some(pos) = line.find('#') {
         &line[..pos]
@@ -124,9 +130,12 @@ fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<P
     }
 
     let (proxy_type, address) = if crate::sidecar::xray_pool::supports_uri(line) {
-        match crate::sidecar::xray_pool::resolve_proxy_uri(line) {
+        match crate::sidecar::xray_pool::resolve_proxy_uri_leased(line) {
             Ok(local) => (
-                ProxyType::Socks5,
+                {
+                    xray_leases.push(line.to_string());
+                    ProxyType::Socks5
+                },
                 local
                     .strip_prefix("socks5://")
                     .unwrap_or(&local)
@@ -199,6 +208,7 @@ pub struct ProxyCheckHandle {
     pub active_threads: Arc<std::sync::atomic::AtomicUsize>,
     pub total: usize,
     pub running: Arc<std::sync::atomic::AtomicBool>,
+    pub xray_leases: Arc<std::sync::Mutex<Vec<String>>>,
     pub start_ms: u64,
 }
 
@@ -242,6 +252,7 @@ pub struct JobManager {
     job_hits: HashMap<Uuid, Vec<HitResult>>,
     /// Stats handles for proxy-check jobs (no RunnerOrchestrator)
     proxy_handles: HashMap<Uuid, ProxyCheckHandle>,
+    xray_leases: HashMap<Uuid, Vec<String>>,
 }
 
 impl JobManager {
@@ -252,7 +263,23 @@ impl JobManager {
             runner_generations: HashMap::new(),
             job_hits: HashMap::new(),
             proxy_handles: HashMap::new(),
+            xray_leases: HashMap::new(),
         }
+    }
+
+    fn release_xray_leases(&mut self, id: Uuid) {
+        if let Some(leases) = self.xray_leases.remove(&id) {
+            crate::sidecar::xray_pool::release_proxy_uris(leases.iter().map(String::as_str));
+        }
+    }
+
+    fn release_proxy_check_xray_leases(handle: &ProxyCheckHandle) {
+        let leases = handle
+            .xray_leases
+            .lock()
+            .map(|leases| leases.clone())
+            .unwrap_or_default();
+        crate::sidecar::xray_pool::release_proxy_uris(leases.iter().map(String::as_str));
     }
 
     pub fn add_job(&mut self, job: Job) -> Uuid {
@@ -271,7 +298,10 @@ impl JobManager {
         }
         self.runners.remove(&id);
         self.runner_generations.remove(&id);
-        self.proxy_handles.remove(&id);
+        self.release_xray_leases(id);
+        if let Some(handle) = self.proxy_handles.remove(&id) {
+            Self::release_proxy_check_xray_leases(&handle);
+        }
         self.job_hits.remove(&id);
         let len = self.jobs.len();
         self.jobs.retain(|j| j.id != id);
@@ -501,7 +531,7 @@ impl JobManager {
         } else {
             &job.pipeline.proxy_settings
         };
-        let (proxy_pool, proxy_mode) = build_proxy_pool(proxy_settings_ref);
+        let (proxy_pool, proxy_mode, xray_leases) = build_proxy_pool(proxy_settings_ref);
         let (hits_tx, hits_rx) = mpsc::channel::<HitResult>(1024);
 
         let runner = Arc::new(RunnerOrchestrator::new(RunnerSetup {
@@ -523,6 +553,7 @@ impl JobManager {
         *generation = generation.saturating_add(1);
         let generation = *generation;
         self.runners.insert(id, runner.clone());
+        self.xray_leases.insert(id, xray_leases);
 
         Some((runner, hits_rx, generation))
     }
@@ -573,6 +604,7 @@ impl JobManager {
         }
         self.update_job_stats(id);
         self.runners.remove(&id);
+        self.release_xray_leases(id);
         if let Some(job) = self.get_job_mut(id) {
             job.state = if job.state == super::job::JobState::Stopping {
                 super::job::JobState::Stopped
@@ -649,6 +681,7 @@ impl JobManager {
         let errors_ctr = Arc::new(AtomicUsize::new(0));
         let active_threads_ctr = Arc::new(AtomicUsize::new(0));
         let running_flag = Arc::new(AtomicBool::new(true));
+        let xray_leases = Arc::new(std::sync::Mutex::new(Vec::new()));
 
         let start_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -666,6 +699,7 @@ impl JobManager {
                 active_threads: active_threads_ctr.clone(),
                 total,
                 running: running_flag.clone(),
+                xray_leases: xray_leases.clone(),
                 start_ms,
             },
         );
@@ -684,6 +718,7 @@ impl JobManager {
             let errors = errors_ctr.clone();
             let active = active_threads_ctr.clone();
             let check_type = proxy_check_type.clone();
+            let xray_leases = xray_leases.clone();
 
             handle.spawn(async move {
                 let _permit = sem.acquire().await.ok();
@@ -693,8 +728,13 @@ impl JobManager {
                 }
 
                 let proxy_url = if crate::sidecar::xray_pool::supports_uri(&proxy) {
-                    match crate::sidecar::xray_pool::resolve_proxy_uri(&proxy) {
-                        Ok(local_url) => local_url,
+                    match crate::sidecar::xray_pool::resolve_proxy_uri_leased(&proxy) {
+                        Ok(local_url) => {
+                            if let Ok(mut leases) = xray_leases.lock() {
+                                leases.push(proxy.trim().to_string());
+                            }
+                            local_url
+                        }
                         Err(error) => {
                             errors.fetch_add(1, Ordering::Relaxed);
                             processed.fetch_add(1, Ordering::Relaxed);
@@ -795,15 +835,16 @@ impl JobManager {
     }
 
     /// Finalize a proxy-check after every spawned task has drained. Preserve a
-    /// manual Stopped state, snapshot final counters, then discard its live
-    /// stats handle. Encrypted adapters remain pooled until application exit so
-    /// other jobs and paused runners can safely reuse their local endpoints.
+    /// manual Stopped state, snapshot final counters, discard its live stats
+    /// handle, and release any job-scoped encrypted-proxy Xray leases.
     pub fn complete_proxy_check_job(&mut self, id: Uuid, generation: u64) -> bool {
         if !self.is_current_generation(id, generation) {
             return false;
         }
         self.update_job_stats(id);
-        self.proxy_handles.remove(&id);
+        if let Some(handle) = self.proxy_handles.remove(&id) {
+            Self::release_proxy_check_xray_leases(&handle);
+        }
         if let Some(job) = self.get_job_mut(id) {
             job.state = if job.state == JobState::Stopping {
                 JobState::Stopped
@@ -837,6 +878,7 @@ mod proxy_check_completion_tests {
                 active_threads: Arc::new(AtomicUsize::new(0)),
                 total: 1,
                 running: Arc::new(AtomicBool::new(false)),
+                xray_leases: Arc::new(std::sync::Mutex::new(Vec::new())),
                 start_ms: 1,
             },
         );

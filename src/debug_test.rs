@@ -422,14 +422,28 @@ mod tests {
         use crate::pipeline::engine::ExecutionContext;
         use crate::pipeline::BotStatus;
         use crate::sidecar::native::create_native_backend;
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
         use uuid::Uuid;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0_u8; 1024];
+            let _ = stream.read(&mut buffer);
+            let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
+            stream.write_all(response.as_bytes()).unwrap();
+        });
 
         let sidecar_tx = create_native_backend();
 
-        // Block 1: HttpRequest to httpbin
+        // Block 1: HttpRequest to a local fixture server. This used to call
+        // httpbin.org directly, which made the suite fail when httpbin returned
+        // transient 503 responses.
         let mut http_block = Block::new(BlockType::HttpRequest);
         if let BlockSettings::HttpRequest(ref mut s) = http_block.settings {
-            s.url = "https://httpbin.org/get".into();
+            s.url = format!("http://{address}/get");
             s.method = "GET".into();
             s.tls_client = crate::pipeline::block::TlsClient::RustTLS; // use native backend
         }
@@ -452,6 +466,7 @@ mod tests {
         let blocks = vec![http_block, kc];
         let mut ctx = ExecutionContext::new(Uuid::new_v4().to_string());
         let result = ctx.execute_blocks(&blocks, &sidecar_tx).await;
+        server.join().unwrap();
 
         println!("\n=== VARIABLE DUMP AFTER HTTP + KEYCHECK ===");
         let snap = ctx.variables.snapshot();
