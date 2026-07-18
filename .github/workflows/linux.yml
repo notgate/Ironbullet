@@ -17,6 +17,11 @@ jobs:
         with:
           go-version: '1.24.x'
           cache-dependency-path: sidecar/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
       - name: Install native dependencies
         run: |
           sudo apt-get update
@@ -52,6 +57,11 @@ jobs:
         with:
           go-version: '1.24.x'
           cache-dependency-path: sidecar/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
       - name: Install native dependencies
         run: ${{ matrix.install }}
       - uses: ./.github/actions/linux-build

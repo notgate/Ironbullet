@@ -32,6 +32,12 @@ runs:
     - name: Run headless core suite
       shell: bash
       run: cargo test --lib --no-default-features --no-fail-fast
+    - name: Build embedded frontend
+      shell: bash
+      run: |
+        npm ci --no-audit --no-fund
+        npm run build
+      working-directory: gui
     - name: Build desktop application
       shell: bash
       run: cargo build --release
