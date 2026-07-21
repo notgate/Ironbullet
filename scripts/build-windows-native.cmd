@@ -39,7 +39,7 @@ if not exist "%XRAY_DIR%\xray.exe" (
   exit /b 1
 )
 
-set "DIST=%REPO%\dist\ironbullet-v0.6.2-rc.4-windows-x64"
+set "DIST=%REPO%\dist\ironbullet-v0.6.2-rc.5-windows-x64"
 if exist "%DIST%" rmdir /s /q "%DIST%"
 mkdir "%DIST%"
 copy /y "%REPO%\target\release\ironbullet.exe" "%DIST%\ironbullet.exe" >nul
@@ -47,6 +47,6 @@ copy /y "%REPO%\sidecar\reqflow-sidecar.exe" "%DIST%\reqflow-sidecar.exe" >nul
 copy /y "%XRAY_DIR%\xray.exe" "%DIST%\xray.exe" >nul
 copy /y "%XRAY_DIR%\LICENSE" "%DIST%\XRAY-LICENSE.txt" >nul
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '%DIST%' -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path -Leaf $_.Path) } | Set-Content -Encoding ascii '%DIST%\release-manifest.sha256'; Compress-Archive -Path '%DIST%\*' -DestinationPath '%REPO%\dist\ironbullet-v0.6.2-rc.4-windows-x64.zip' -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '%DIST%' -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path -Leaf $_.Path) } | Set-Content -Encoding ascii '%DIST%\release-manifest.sha256'; Compress-Archive -Path '%DIST%\*' -DestinationPath '%REPO%\dist\ironbullet-v0.6.2-rc.5-windows-x64.zip' -Force"
 if errorlevel 1 exit /b %errorlevel%
-echo Built bundle: %REPO%\dist\ironbullet-v0.6.2-rc.4-windows-x64.zip
+echo Built bundle: %REPO%\dist\ironbullet-v0.6.2-rc.5-windows-x64.zip

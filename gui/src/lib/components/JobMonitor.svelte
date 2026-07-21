@@ -730,7 +730,7 @@ Error handling
 						{@const pct = jobProgress(job)}
 						{@const isActive = app.activeJobId === (job as any).id}
 						<tr
-							class="border-b border-border/50 hover:bg-accent/20 cursor-pointer transition-colors {isActive ? 'bg-primary/8 border-l-2 border-l-primary' : ''}"
+							class="job-row border-b border-border/50 hover:bg-accent/20 cursor-pointer transition-colors {isActive ? 'bg-primary/8 border-l-2 border-l-primary' : ''}"
 							onclick={() => selectJob((job as any).id)}
 							oncontextmenu={(e) => openJobCtxMenu(e, job)}
 						>
@@ -780,6 +780,11 @@ Error handling
 										title="View hits in Data panel"
 										onclick={() => viewJobHits((job as any).id)}
 									><Database size={11} /></button>
+									<button
+										class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"
+										title="View debug log"
+										onclick={() => openDebugLog((job as any).id)}
+									><Bug size={11} /></button>
 									{#if job.state !== 'Running' && job.state !== 'Stopping'}
 										<button
 											class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-blue transition-colors"

@@ -1,5 +1,5 @@
 param(
-  [string]$Bundle = "..\..\dist\ironbullet-v0.6.2-rc.4-windows-x64",
+  [string]$Bundle = "..\..\dist\ironbullet-v0.6.2-rc.5-windows-x64",
   [int]$Port = 18987
 )
 $ErrorActionPreference = "Stop"
